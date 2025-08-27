@@ -1,60 +1,169 @@
 import React, { useEffect, useState } from "react";
 import Header from "./components/Header.jsx";
+import Login from "./components/Login.jsx";
 import RentPanel from "./components/RentPanel.jsx";
 import ReturnPanel from "./components/ReturnPanel.jsx";
 import InventoryPanel from "./components/InventoryPanel.jsx";
 import CustomersPanel from "./components/CustomersPanel.jsx";
 import ReportsPanel from "./components/ReportsPanel.jsx";
 import SettingsPanel from "./components/SettingsPanel.jsx";
-import { loadLS, saveLS, LS_KEYS } from "./utils/storage.js";
-import { uid } from "./utils/helpers.js";
+import { getToken, clearToken } from "./utils/storage.js";
 
 export default function App() {
-  const [items, setItems] = useState(() => loadLS(LS_KEYS.items, [
-    { id: uid(), name: "Projektor", sku: "PRJ-01", pricePerDay: 80000, stock: 3 },
-    { id: uid(), name: "Kamera", sku: "CAM-02", pricePerDay: 120000, stock: 2 },
-    { id: uid(), name: "Tripod", sku: "TRP-03", pricePerDay: 20000, stock: 5 },
-  ]));
-  const [customers, setCustomers] = useState(() => loadLS(LS_KEYS.customers, [
-    { id: uid(), name: "Ali Valiyev", phone: "+99890 000 00 00" },
-  ]));
-  const [rentals, setRentals] = useState(() => loadLS(LS_KEYS.rentals, []));
-  const [settings, setSettings] = useState(() => loadLS(LS_KEYS.settings, {
+  const [items, setItems] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [rentals, setRentals] = useState([]);
+  
+  const [settings, setSettings] = useState({
     orgName: "Mening Ijara Servisim",
     orgPhone: "+99890 123 45 67",
     orgAddress: "Toshkent",
-    taxPercent: 0,
-  }));
+    taxPercent: 12,
+  });
 
-  useEffect(() => saveLS(LS_KEYS.items, items), [items]);
-  useEffect(() => saveLS(LS_KEYS.customers, customers), [customers]);
-  useEffect(() => saveLS(LS_KEYS.rentals, rentals), [rentals]);
-  useEffect(() => saveLS(LS_KEYS.settings, settings), [settings]);
+  const [tab, setTab] = useState(() => localStorage.getItem('activeTab') || "rent");
+  useEffect(() => { localStorage.setItem('activeTab', tab); }, [tab]);
 
-  const [tab, setTab] = useState("rent");
+  const [token, setToken] = useState(() => {
+    const currentToken = getToken();
+    return currentToken || "";
+  });
+
+  // Fetch initial data directly from backend
+  useEffect(() => {
+    const fetchAll = async () => {
+      if (!token) return;
+      const headers = { Authorization: `Bearer ${token}` };
+      try {
+        // Products
+        const pr = await fetch("http://localhost:3000/products", { headers });
+        if (pr.ok) {
+          const data = await pr.json();
+          setItems(data.products || []);
+        }
+        // Customers
+        const cr = await fetch("http://localhost:3000/clients", { headers });
+        if (pr.ok) {
+          const data = await cr.json();
+          const mapped = (data.clients || []).map((c) => ({
+            id: c.id,
+            name: `${c.firstName} ${c.lastName}`,
+            phone: c.phone,
+            firstName: c.firstName,
+            lastName: c.lastName,
+          }));
+          setCustomers(mapped);
+        }
+        // Orders
+        const or = await fetch("http://localhost:3000/orders", { headers });
+        if (or.ok) {
+          const data = await or.json();
+          const calcDays = (from, to) => {
+            const d1 = new Date(from);
+            const d2 = new Date(to);
+            const ms = Math.max(0, d2 - d1);
+            return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+          };
+          const mapped = (data.orders || []).map((o) => ({
+            id: o.id,
+            customerId: o.clientId,
+            items: (o.items || []).map((i) => ({
+              itemId: i.productId,
+              qty: i.quantity - i.returned,
+              pricePerDay: i.product.price,
+              orderItemId: i.id,
+              returned: i.returned,
+              name: i.product.name,
+              size: i.product.size,
+            })),
+            fromDate: o.fromDate?.split("T")[0],
+            toDate: o.toDate?.split("T")[0],
+            days: calcDays(o.fromDate, o.toDate),
+            subtotal: o.subtotal,
+            tax: o.tax,
+            total: o.total,
+            paidAt: o.createdAt,
+            returnedAt: o.status !== "PENDING" ? o.updatedAt : null,
+          }));
+          setRentals(mapped);
+        }
+      } catch (e) {
+        console.error("Initial fetch error", e);
+      }
+    };
+    fetchAll();
+  }, [token]);
+
+  // Token revalidation
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentToken = getToken();
+      if (!currentToken) {
+        setToken("");
+        clearToken();
+      }
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleLogin = (newToken) => {
+    setToken(newToken);
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    setToken("");
+  };
+
+  if (!token) {
+    return <Login onLogin={handleLogin} />;
+  }
 
   return (
-    <div className="app gap">
-      <Header orgName={settings.orgName} active={tab} onTab={setTab} />
-
-      {tab === "rent" && (
-        <RentPanel items={items} setItems={setItems} customers={customers} rentals={rentals} setRentals={setRentals} settings={settings} />
-      )}
-      {tab === "return" && (
-        <ReturnPanel items={items} setItems={setItems} rentals={rentals} setRentals={setRentals} customers={customers} />
-      )}
-      {tab === "inventory" && (
-        <InventoryPanel items={items} setItems={setItems} />
-      )}
-      {tab === "customers" && (
-        <CustomersPanel customers={customers} setCustomers={setCustomers} />
-      )}
-      {tab === "reports" && (
-        <ReportsPanel rentals={rentals} />
-      )}
-      {tab === "settings" && (
-        <SettingsPanel settings={settings} setSettings={setSettings} />
-      )}
+    <div className="app gap" style={{ width: "100vw", maxWidth: "100%" }}>
+      <Header orgName={settings.orgName} active={tab} onTab={setTab} onLogout={handleLogout} />
+      <div className="gap page" style={{ padding: "16px" }}>
+        {tab === "rent" && (
+          <RentPanel
+            items={items}
+            setItems={setItems}
+            customers={customers}
+            setCustomers={setCustomers}
+            rentals={rentals}
+            setRentals={setRentals}
+            settings={settings}
+          />
+        )}
+        {tab === "return" && (
+          <ReturnPanel
+            items={items}
+            setItems={setItems}
+            rentals={rentals}
+            setRentals={setRentals}
+            customers={customers}
+            settings={settings}
+          />
+        )}
+        {tab === "inventory" && (
+          <InventoryPanel 
+            items={items} 
+            setItems={setItems} 
+            rentals={rentals}
+            setRentals={setRentals}
+            customers={customers}
+          />
+        )}
+        {tab === "customers" && (
+          <CustomersPanel customers={customers} setCustomers={setCustomers} />
+        )}
+        {tab === "reports" && (
+          <ReportsPanel rentals={rentals} items={items} customers={customers} setRentals={setRentals} />
+        )}
+        {tab === "settings" && (
+          <SettingsPanel />
+        )}
+      </div>
     </div>
   );
 }
