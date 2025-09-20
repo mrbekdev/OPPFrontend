@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { fmt } from "../utils/helpers";
+import { openPrintReceipt } from "./Receipt";
 
 export default function ReportsPanel({ rentals, items, customers, setRentals }) {
   const [year, setYear] = useState("");
@@ -12,6 +13,12 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
   const safeCustomers = Array.isArray(customers) ? customers : [];
 
   const nameById = (id) => safeCustomers.find(c => c.id === id)?.name || id;
+  useEffect(() => {
+    // Always pull fresh orders so returned orders keep their items
+    refreshOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const yearOptions = useMemo(() => {
     const ys = new Set(
@@ -47,12 +54,12 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
     status: r.status,
     items: (r.items || []).map((item) => {
       const product = safeItems.find((i) => i.id === item.itemId);
-      const productName = item.name || product?.name || "Unknown";
-      const productSize = item.size || product?.size || "N/A";
-      const pricePerDay = item.pricePerDay || product?.price || 0;
+      const productName = item.name || item.productName || product?.name || item?.product?.name || "Unknown";
+      const productSize = item.size || item.productSize || product?.size || item?.product?.size || "N/A";
+      const pricePerDay = item.pricePerDay || product?.price || item?.product?.price || 0;
       const qty = item.qty || 0;
       const activeQty = item.activeQty || qty;
-      const returnedQty = item.returnedQty || 0;
+      const returnedQty = item.returnedQty || item.returned || 0;
       return {
         orderItemId: item.orderItemId,
         productId: item.itemId,
@@ -121,19 +128,19 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
   const exportCSV = () => {
     const delimiter = ',';
     const header = [
-      "Buyurtma ID",
-      "Sana",
-      "Mijoz",
-      "Kun",
-      "Jami (ijara)",
-      "Buyurtma Holati",
-      "Mahsulot Nomi",
-      "Mahsulot O'lchami",
-      "Jami Soni",
-      "Qaytarilgan Soni",
-      "Faol Soni",
-      "Narx/kun",
-      "Item Jami",
+      "Буюртма ID",
+      "Сана",
+      "Мижоз",
+      "Кун",
+      "Жами (ижара)",
+      "Буюртма Ҳолати",
+      "Маҳсулот Номи",
+      "Маҳсулот Ўлчами",
+      "Жами Сони",
+      "Қайтарилган Сони",
+      "Фаол Сони",
+      "Нарx/кун",
+      "Item Жами",
     ].join(delimiter);
     const body = filteredRentals
       .flatMap((r) => {
@@ -162,7 +169,7 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `hisobot_${year || "hammasi"}-${month || "hammasi"}.csv`;
+    a.download = `ҳисобот_${year || "ҳаммаси"}-${month || "ҳаммаси"}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -171,9 +178,9 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
   const closeOrderDetail = () => setOrderDetail(null);
 
   const getReturnStatusText = (item) => {
-    if (item.isFullyReturned) return "✓ To'liq qaytarildi";
-    if (item.isPartiallyReturned) return `↻ ${item.returnedQty}/${item.qty} qaytarildi`;
-    return "Faol";
+    if (item.isFullyReturned) return "✓ Тўлиқ қайтарилди";
+    if (item.isPartiallyReturned) return `↻ ${item.returnedQty}/${item.qty} қайтарилди`;
+    return "Фаол";
   };
 
   const getReturnStatusColor = (item) => {
@@ -183,13 +190,13 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
   };
 
   const getOrderStatusText = (status) => {
-    if (!status) return "Noma'lum";
+    if (!status) return "Номаълум";
     switch (status) {
-      case "RETURNED": return "To'liq qaytarildi";
-      case "PARTIALLY_RETURNED": return "Qisman qaytarildi";
-      case "DELIVERED": return "Yetkazildi";
-      case "PENDING": return "Kutilmoqda";
-      default: return "Noma'lum";
+      case "RETURNED": return "Тўлиқ қайтарилди";
+      case "PARTIALLY_RETURNED": return "Қисман қайтарилди";
+      case "DELIVERED": return "Етказилди";
+      case "PENDING": return "Кутилмоқда";
+      default: return "Номаълум";
     }
   };
 
@@ -223,9 +230,9 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
           customerId: o.clientId,
           items: (o.items || []).map((i) => ({
             itemId: i.productId,
-            qty: i.quantity, // Jami son
-            activeQty: i.activeQuantity || (i.quantity - i.returned), // Faol son
-            returnedQty: i.returned, // Qaytarilgan son
+            qty: i.quantity, // Жами сон
+            activeQty: i.activeQuantity || (i.quantity - i.returned), // Фаол сон
+            returnedQty: i.returned, // Қайтарилган сон
             pricePerDay: i.product.price,
             orderItemId: i.id,
             returned: i.returned,
@@ -252,7 +259,7 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
   };
 
   const deleteOrder = async (id) => {
-    if (!confirm("Buyurtmani o'chirishni tasdiqlang")) return;
+    if (!confirm("Буюртмани ўчиришни тасдиқланг")) return;
     try {
       const res = await fetch(`http://localhost:3000/orders/${id}`, { method:'DELETE', headers:{ Authorization: `Bearer ${token}` } });
       if (res.ok) {
@@ -262,19 +269,44 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
         const e = await res.json();
       }
     } catch (e) {
-      alert("Tarmoq xatoligi");
+      alert("Тармоқ хатолиги");
     }
+  };
+
+  const printOrder = async (order) => {
+    const customer = safeCustomers.find(c => c.id === order.customerId) || {};
+    const itemsForReceipt = (order.items || []).map(it => ({
+      name: it.productName,
+      size: it.productSize,
+      qty: it.activeQty || it.qty || 0,
+      pricePerDay: it.pricePerDay || 0,
+      weight: 0,
+    }));
+    const subtotal = itemsForReceipt.reduce((s, it) => s + (Number(it.pricePerDay) || 0) * (Number(it.qty) || 0), 0);
+    await openPrintReceipt({
+      settings: {},
+      customer: { name: nameById(order.customerId), phone: customer.phone },
+      items: itemsForReceipt,
+      fromDate: order.fromDate || order.paidAt,
+      toDate: order.returnedAt || new Date().toISOString(),
+      days: order.days || 1,
+      subtotal,
+      tax: 0,
+      total: subtotal,
+      totalWeight: 0,
+      orderId: order.id,
+    });
   };
 
   return (
     <div className="gap">
-      <div className="card gap">
+      <div className="card gap" style={{ boxShadow: '0 6px 18px rgba(0,0,0,0.06)', borderRadius: 12 }}>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <h2>Ҳисоботлар</h2>
-          <div className="row" style={{ gap: "16px", alignItems: "center" }}>
+          <h2 style={{ margin: 0 }}>Ҳисоботлар</h2>
+          <div className="row" style={{ gap: "12px", alignItems: "center", flexWrap: 'wrap' }}>
             <select
               className="input"
-              style={{ width: "120px", fontSize: "14px" }}
+              style={{ width: "140px", fontSize: "14px" }}
               value={year}
               onChange={(e) => setYear(e.target.value)}
             >
@@ -287,7 +319,7 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
             </select>
             <select
               className="input"
-              style={{ width: "120px", fontSize: "14px" }}
+              style={{ width: "140px", fontSize: "14px" }}
               value={month}
               onChange={(e) => setMonth(e.target.value)}
             >
@@ -302,26 +334,26 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
               className="btn primary"
               onClick={() => setShowSummary(!showSummary)}
             >
-              {showSummary ? "Деталлар" : "Хисобот"}
+              {showSummary ? "Деталлар" : "Ҳисобот"}
             </button>
             <button
               className="btn"
               onClick={exportCSV}
               style={{ background: "#28a745", color: "white" }}
             >
-              📊 Excel yuklab olish
+              📊 Excel юклаб олиш
             </button>
             <button
               className="btn"
               onClick={() => {
                 const delimiter = ',';
                 const header = [
-                  "Mahsulot Nomi",
-                  "O'lcham",
-                  "Jami son",
-                  "Qaytarilgan",
-                  "Faol",
-                  "Jami summa"
+                  "Маҳсулот Номи",
+                  "Ўлчам",
+                  "Жами сон",
+                  "Қайтарилган",
+                  "Фаол",
+                  "Жами сумма"
                 ].join(delimiter);
                 
                 const body = productSummary.map((item) =>
@@ -340,13 +372,13 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `mahsulotlar_hisobot_${year || "hammasi"}-${month || "hammasi"}.csv`;
+                a.download = `маҳсулотлар_ҳисобот_${year || "ҳаммаси"}-${month || "ҳаммаси"}.csv`;
                 a.click();
                 URL.revokeObjectURL(url);
               }}
               style={{ background: "#17a2b8", color: "white" }}
             >
-              📊 Mahsulotlar Excel
+              📊 Маҳсулотлар Excel
             </button>
           </div>
         </div>
@@ -354,25 +386,25 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
         {showSummary ? (
           <div className="gap">
             <div className="row" style={{ gap: "24px", flexWrap: "wrap" }}>
-              <div className="card" style={{ flex: 1, minWidth: "200px" }}>
+              <div className="card" style={{ flex: 1, minWidth: "220px", boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
                 <h3>Умумий маълумот</h3>
-                <div>Buyurtmalar soni: <b>{filteredRentals.length}</b></div>
-                <div>Jami summa: <b>{fmt(totals.subtotal)}</b></div>
-                <div>Faol buyurtmalar: <b>{filteredRentals.filter(r => (r.status || 'PENDING') !== "RETURNED").length}</b></div>
-                <div>To'liq qaytarilgan: <b>{filteredRentals.filter(r => (r.status || 'PENDING') === "RETURNED").length}</b></div>
-                <div>Qisman qaytarilgan: <b>{filteredRentals.filter(r => (r.status || 'PENDING') === "PARTIALLY_RETURNED").length}</b></div>
+                <div style={{ lineHeight: 1.9 }}>Буюртмалар сони: <b>{filteredRentals.length}</b></div>
+                <div style={{ lineHeight: 1.9 }}>Жами сумма: <b>{fmt(totals.subtotal)}</b></div>
+                <div style={{ lineHeight: 1.9 }}>Фаол буюртмалар: <b>{filteredRentals.filter(r => (r.status || 'PENDING') !== "RETURNED").length}</b></div>
+                <div style={{ lineHeight: 1.9 }}>Тўлиқ қайтарилган: <b>{filteredRentals.filter(r => (r.status || 'PENDING') === "RETURNED").length}</b></div>
+                <div style={{ lineHeight: 1.9 }}>Қисман қайтарилган: <b>{filteredRentals.filter(r => (r.status || 'PENDING') === "PARTIALLY_RETURNED").length}</b></div>
               </div>
               
-              <div className="card" style={{ flex: 1, minWidth: "200px" }}>
+              <div className="card" style={{ flex: 1, minWidth: "220px", boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
                 <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                  <h3>Kunlik daromad</h3>
+                  <h3>Кунлик даромад</h3>
                   <button
                     className="btn"
                     onClick={() => {
                       const delimiter = ',';
                       const header = [
-                        "Sana",
-                        "Daromad"
+                        "Сана",
+                        "Даромад"
                       ].join(delimiter);
                       
                       const body = groupedByDay.map((day) =>
@@ -387,37 +419,39 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = url;
-                      a.download = `kunlik_daromad_${year || "hammasi"}-${month || "hammasi"}.csv`;
+                      a.download = `кунлик_даромад_${year || "ҳаммаси"}-${month || "ҳаммаси"}.csv`;
                       a.click();
                       URL.revokeObjectURL(url);
                     }}
                     style={{ background: "#6f42c1", color: "white", fontSize: "10px", padding: "2px 6px" }}
                   >
-                    📊 Kunlik Excel
+                    📊 Кунлик Excel
                   </button>
                 </div>
-                {groupedByDay.slice(-7).map((day) => (
-                  <div key={day.date}>
-                    {day.date}: <b>{fmt(day.total)}</b>
-                  </div>
-                ))}
+                <div style={{ maxHeight: 220, overflow: 'auto' }}>
+                  {groupedByDay.slice(-14).map((day) => (
+                    <div key={day.date}>
+                      {day.date}: <b>{fmt(day.total)}</b>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
             
             <div className="card gap">
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <h3>Mahsulotlar bo'yicha</h3>
+                <h3>Маҳсулотлар бўйича</h3>
                 <button
                   className="btn"
                   onClick={() => {
                     const delimiter = ',';
                     const header = [
-                      "Mahsulot Nomi",
-                      "O'lcham",
-                      "Jami son",
-                      "Qaytarilgan",
-                      "Faol",
-                      "Jami summa"
+                      "Маҳсулот Номи",
+                      "Ўлчам",
+                      "Жами сон",
+                      "Қайтарилган",
+                      "Фаол",
+                      "Жами сумма"
                     ].join(delimiter);
                     
                     const body = productSummary.map((item) =>
@@ -436,30 +470,30 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");
                     a.href = url;
-                    a.download = `mahsulotlar_hisobot_${year || "hammasi"}-${month || "hammasi"}.csv`;
+                    a.download = `маҳсулотлар_ҳисобот_${year || "ҳаммаси"}-${month || "ҳаммаси"}.csv`;
                     a.click();
                     URL.revokeObjectURL(url);
                   }}
                   style={{ background: "#17a2b8", color: "white", fontSize: "12px", padding: "4px 8px" }}
                 >
-                  📊 Mahsulotlar Excel
+                  📊 Маҳсулотлар Excel
                 </button>
               </div>
-              <div className="table-wrap">
+              <div className="table-wrap" style={{ maxHeight: 420, overflow: 'auto', borderRadius: 8 }}>
                 <table>
                   <thead>
                     <tr>
-                      <th>Mahsulot</th>
-                      <th>O'lcham</th>
-                      <th>Jami son</th>
-                      <th>Qaytarilgan</th>
-                      <th>Faol</th>
-                      <th>Jami summa</th>
+                      <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Маҳсулот</th>
+                      <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Ўлчам</th>
+                      <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Жами сон</th>
+                      <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Қайтарилган</th>
+                      <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Фаол</th>
+                      <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Жами сумма</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {productSummary.map((item) => (
-                      <tr key={`${item.productId}_${item.productSize}`}>
+                    {productSummary.map((item, idx) => (
+                      <tr key={`${item.productId}_${item.productSize}`} style={{ background: idx % 2 ? '#fafafa' : '#fff' }} >
                         <td><strong>{item.productName}</strong></td>
                         <td>{item.productSize}</td>
                         <td>{item.totalQty}</td>
@@ -478,49 +512,54 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
             </div>
           </div>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap" style={{ maxHeight: 520, overflow: 'auto', borderRadius: 8 }}>
             <table>
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Sana</th>
-                  <th>Mijoz</th>
-                  <th>Mahsulotlar</th>
-                  <th>Kunlar</th>
-                  <th>Jami</th>
-                  <th>Holat</th>
-                  <th>Amallar</th>
+                  <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>ID</th>
+                  <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Сана</th>
+                  <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Мижоз</th>
+
+                  <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Кунлар</th>
+                  <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Жами</th>
+                  <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Ҳолат</th>
+                  <th style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>Амалар</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredRentals.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.id}</td>
-                    <td>{r.date}</td>
-                    <td>{nameById(r.customerId)}</td>
-                    <td>
-                      {r.items.map((item) => (
-                        <div key={item.orderItemId} style={{ marginBottom: "4px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span style={{ fontWeight: "bold" }}>{item.productName}</span>
-                            <span style={{ 
-                              fontSize: "11px", 
-                              padding: "2px 6px", 
-                              borderRadius: "4px",
-                              backgroundColor: getReturnStatusColor(item),
-                              color: "white"
-                            }}>
-                              {getReturnStatusText(item)}
-                            </span>
-                          </div>
-                          <div style={{ color: "#666", fontSize: "12px", marginLeft: "8px" }}>
-                            {item.qty} dona ({item.activeQty} faol, {item.returnedQty} qaytarildi) - {item.productSize}
-                          </div>
-                        </div>
-                      ))}
-                    </td>
-                    <td>{r.days}</td>
-                    <td>{fmt(r.items.reduce((s, it) => s + it.pricePerDay * it.activeQty * r.days, 0))}</td>
+                {filteredRentals.map((r, idx) => (
+                  <tr 
+                    key={r.id}  
+                    className="hover:bg-black hover:text-white"
+                    style={{
+                      transition: "all 0.2s ease"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "black";
+                      e.currentTarget.style.color = "white";
+                      // Make button text black when row is hovered
+                      const buttons = e.currentTarget.querySelectorAll('button');
+                      buttons.forEach(btn => {
+                        btn.style.color = "black";
+                        btn.style.backgroundColor = "white";
+                      });
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "";
+                      e.currentTarget.style.color = "";
+                      // Reset button styles
+                      const buttons = e.currentTarget.querySelectorAll('button');
+                      buttons.forEach(btn => {
+                        btn.style.color = "";
+                        btn.style.backgroundColor = "";
+                      });
+                    }}
+                  >
+                    <td className="text-2xl">{r.id}</td>
+                    <td className="text-2xl">{r.date}</td>
+                    <td className="text-2xl">{nameById(r.customerId)}</td>
+                    <td className="text-2xl">{r.days}</td>
+                    <td className="text-2xl">{fmt(r.items.reduce((s, it) => s + it.pricePerDay * it.activeQty * r.days, 0))}</td>
                     <td>
                       <span style={{ 
                         color: getOrderStatusColor(r.status || 'PENDING'),
@@ -539,7 +578,14 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
                         onClick={() => openOrderDetail(r)}
                         style={{ fontSize: "12px", padding: "4px 8px" }}
                       >
-                        Ko'rish
+                        Кўриш
+                      </button>
+                      <button 
+                        className="btn"
+                        onClick={() => printOrder(r)}
+                        style={{ fontSize: "12px", padding: "4px 8px", marginLeft: 8 }}
+                      >
+                        🖨️ Print
                       </button>
                     </td>
                   </tr>
@@ -554,16 +600,16 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
         <div className="modal-overlay" onClick={closeOrderDetail}>
           <div className="modal-content" style={{ maxWidth: '900px', width: '95%' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Buyurtma #{orderDetail.id} - to'liq ma'lumot</h3>
+              <h3>Буюртма #{orderDetail.id} - тўлиқ маълумот</h3>
               <button className="modal-close" onClick={closeOrderDetail}>✕</button>
             </div>
             <div className="modal-body gap">
               <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: "16px" }}>
-                <div><b>Olingan sana:</b> {orderDetail.fromDate ? new Date(orderDetail.fromDate).toLocaleString('uz-UZ') : new Date(orderDetail.date).toLocaleString('uz-UZ')}</div>
-                <div><b>Qaytarilgan sana:</b> {orderDetail.returnedAt ? new Date(orderDetail.returnedAt).toLocaleString('uz-UZ') : '-'}</div>
-                <div><b>Mijoz:</b> {nameById(orderDetail.customerId)}</div>
-                <div><b>Kun:</b> {orderDetail.days}</div>
-                <div><b>Holat:</b> 
+                <div><b>Олинган сана:</b> {orderDetail.fromDate ? new Date(orderDetail.fromDate).toLocaleString('uz-UZ') : new Date(orderDetail.date).toLocaleString('uz-UZ')}</div>
+                <div><b>Қайтарилган сана:</b> {orderDetail.returnedAt ? new Date(orderDetail.returnedAt).toLocaleString('uz-UZ') : '-'}</div>
+                <div><b>Мижоз:</b> {nameById(orderDetail.customerId)}</div>
+                <div><b>Кун:</b> {orderDetail.days}</div>
+                <div><b>Ҳолат:</b> 
                   <span style={{ 
                     color: getOrderStatusColor(orderDetail.status || 'PENDING'),
                     fontWeight: "bold",
@@ -576,17 +622,17 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
                   </span>
                 </div>
               </div>
-              <div className="table-wrap">
+              <div className="table-wrap" style={{ maxHeight: 420, overflow: 'auto', borderRadius: 8 }}>
                 <table>
                   <thead>
                     <tr>
-                      <th>Mahsulot</th>
-                      <th>O'lcham</th>
-                      <th>Jami Soni</th>
-                      <th>Faol Soni</th>
-                      <th>Qaytarilgan</th>
-                      <th>Narx/kun</th>
-                      <th>Jami</th>
+                      <th>Маҳсулот</th>
+                      <th>Ўлчам</th>
+                      <th>Жами Сони</th>
+                      <th>Фаол Сони</th>
+                      <th>Қайтарилган</th>
+                      <th>Нарx/кун</th>
+                      <th>Жами</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -610,12 +656,12 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
                           </div>
                         </td>
                         <td>{it.productSize}</td>
-                        <td>{it.qty} dona</td>
+                        <td>{it.qty} дона</td>
                         <td style={{ color: it.activeQty > 0 ? "#28a745" : "#666" }}>
-                          {it.activeQty} dona
+                          {it.activeQty} дона
                         </td>
                         <td style={{ color: it.returnedQty > 0 ? "#ffc107" : "#666" }}>
-                          {it.returnedQty} dona
+                          {it.returnedQty} дона
                         </td>
                         <td>{fmt(it.pricePerDay)}</td>
                         <td>{fmt(it.pricePerDay * it.activeQty * orderDetail.days)}</td>
@@ -626,18 +672,18 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
               </div>
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: "14px", color: "#666" }}>
-                  Jami mahsulotlar: {orderDetail.items.length} | 
-                  Faol mahsulotlar: {orderDetail.items.filter(it => it.activeQty > 0).length} | 
-                  Qaytarilgan mahsulotlar: {orderDetail.items.filter(it => it.returnedQty > 0).length}
+                  Жами маҳсулотлар: {orderDetail.items.length} | 
+                  Фаол маҳсулотлар: {orderDetail.items.filter(it => it.activeQty > 0).length} | 
+                  Қайтарилган маҳсулотлар: {orderDetail.items.filter(it => it.returnedQty > 0).length}
                 </div>
                 <div className="total">
-                  Umumiy: {fmt(orderDetail.items.reduce((s, it) => s + it.pricePerDay * it.activeQty * orderDetail.days, 0))}
+                  Умумий: {fmt(orderDetail.items.reduce((s, it) => s + it.pricePerDay * it.activeQty * orderDetail.days, 0))}
                 </div>
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn" onClick={() => deleteOrder(orderDetail.id)} style={{ background:'#ef4444', color:'#fff', marginRight:'auto' }}>Buyurtmani o'chirish</button>
-              <button className="btn" onClick={closeOrderDetail}>Yopish</button>
+              <button className="btn" onClick={() => deleteOrder(orderDetail.id)} style={{ background:'#ef4444', color:'#fff', marginRight:'auto' }}>Буюртмани ўчириш</button>
+              <button className="btn" onClick={closeOrderDetail}>Ёпиш</button>
             </div>
           </div>
         </div>
@@ -645,4 +691,3 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
     </div>
   );
 }
-

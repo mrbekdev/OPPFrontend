@@ -23,6 +23,41 @@ export const formatDate = (date) => {
   return new Date(date).toLocaleDateString('uz-UZ');
 };
 
+// Timezone utility functions for Uzbekistan (UTC+5)
+export const toUzbekistanTime = (date) => {
+  const inputDate = new Date(date);
+  // Create a new date object that represents the same moment in Uzbekistan timezone
+  // We use Intl.DateTimeFormat to properly handle timezone conversion
+  const uzbekistanTime = new Date(inputDate.toLocaleString("en-US", {timeZone: "Asia/Tashkent"}));
+  return uzbekistanTime;
+};
+
+export const formatUzbekistanDate = (date) => {
+  const inputDate = new Date(date);
+  return inputDate.toLocaleDateString('uz-UZ', {timeZone: 'Asia/Tashkent'});
+};
+
+export const formatUzbekistanTime = (date) => {
+  const inputDate = new Date(date);
+  return inputDate.toLocaleTimeString('uz-UZ', {
+    timeZone: 'Asia/Tashkent',
+    hour: '2-digit', 
+    minute: '2-digit'
+  });
+};
+
+export const formatUzbekistanDateTime = (date) => {
+  const inputDate = new Date(date);
+  return {
+    date: inputDate.toLocaleDateString('uz-UZ', {timeZone: 'Asia/Tashkent'}),
+    time: inputDate.toLocaleTimeString('uz-UZ', {
+      timeZone: 'Asia/Tashkent',
+      hour: '2-digit', 
+      minute: '2-digit'
+    })
+  };
+};
+
 // Helper function for making authenticated API calls
 export const apiCall = async (url, options = {}) => {
   const { getToken } = await import('./storage.js');

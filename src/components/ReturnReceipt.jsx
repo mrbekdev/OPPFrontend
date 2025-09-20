@@ -1,4 +1,3 @@
-
 import React from "react";
 import { fmt } from "../utils/helpers";
 
@@ -24,6 +23,7 @@ export async function openReturnReceipt({
   const safeOriginalAmount = Number(originalAmount) || 0;
   const safeHours = Number(hours) || 0;
   const billingMultiplier = Number(days) || 1;
+  const safeAdvancePayment = Number(rental?.advancePayment) || 0;
 
   // Sana va vaqtni formatlash
   const formatDate = (dateString) => {
@@ -60,6 +60,11 @@ export async function openReturnReceipt({
     }
   };
 
+  const rentalDate = formatDate(rental?.paidAt);
+  const rentalTime = formatTime(rental?.paidAt);
+  const returnDate = formatDate(new Date());
+  const returnTime = formatTime(new Date());
+
   const html = `
     <!doctype html>
     <html>
@@ -67,79 +72,23 @@ export async function openReturnReceipt({
         <title>Қайтариш чеки - ${rental?.id || ""}</title>
         <meta charset="UTF-8" />
         <style>
-          body { 
-            font-family: Arial, sans-serif; 
-            font-size: 16px; 
-            background: white;
-            color: #000;
-            font-weight: bold;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 20px;
-            font-size: 20px;
-            font-weight: bold;
-          }
-          table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin: 15px 0;
-          }
-          th, td { 
-            border: 1px solid #000; 
-            padding: 12px; 
-            font-size: 16px;
-            text-align: left;
-            vertical-align: top;
-            font-weight: bold;
-          }
-          th { 
-            background: #f0f0f0; 
-            font-weight: bold;
-            text-align: center;
-            font-size: 18px;
-          }
-          .number-cell {
-            text-align: center;
-          }
-          .price-cell {
-            text-align: right;
-          }
-          .total-cell {
-            text-align: right;
-            font-weight: bold;
-          }
-          .summary-row {
-            background: #f8f8f8;
-            font-weight: bold;
-            font-size: 18px;
-          }
-          .customer-row {
-            background: #e8f4f8;
-            font-weight: bold;
-            font-size: 18px;
-          }
-          .section-title {
-            font-size: 20px;
-            font-weight: bold;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            text-align: center;
-          }
-          @page { 
-            margin: 10mm; 
-            size: A4;
-          }
-          @media print {
-            body { margin: 0; }
-            .no-print { display: none; }
-          }
+          body { font-family: Arial, sans-serif; font-size: 16px; background: #fff; color: #000; margin: 0; padding: 10px; font-weight: bold; }
+          .header { text-align: center; font-size: 12px; font-weight: bold; }
+          table { width: 100%; border-collapse: collapse; margin: 0; }
+          th, td { border: 1px solid #000;  font-size: 16px; text-align: left; vertical-align: top; font-weight: bold; }
+          th { background: none; text-align: center; font-size: 16px; font-weight: bold; }
+          .number-cell { text-align: center; }
+          .price-cell { text-align: right; }
+          .total-cell { text-align: right; font-weight: bold; }
+          .summary-row { background: none; font-weight: bold; font-size: 16px; }
+          .customer-row { background: none; font-weight: bold; font-size: 16px; }
+          .section-title { font-size: 16px; font-weight: bold; margin: 0; text-align: left; }
+          @page { margin: 0; size: A4; }
+          @media print { body { margin: 0; } .no-print { display: none; } }
         </style>
       </head>
       <body>
-        <div class="header">
-          Корейский Опалубка Тел: ${companyPhone || ""}
-        </div>
+        <div class="header">Корейский Опалубка Тел: ${companyPhone || ""}</div>
 
         ${safeReturnedItems.length > 0 ? `
           <div class="section-title">ҚАЙТАРИЛДИ</div>
@@ -147,40 +96,48 @@ export async function openReturnReceipt({
             <thead>
               <tr>
                 <th>No</th>
+                <th>Клиент тел</th>
                 <th>Махсулот номи</th>
                 <th>Олчам</th>
                 <th>Сони</th>
                 <th>Суммаси</th>
                 <th>Оғирлиги</th>
-                <th>Қайтарилган сана</th>
-                <th>Қайтарилган вақт</th>
+                <th>Берилган сана</th>
               </tr>
             </thead>
             <tbody>
               ${safeReturnedItems.map((item, index) => `
                 <tr>
                   <td class="number-cell">${rental?.id || ""}</td>
+                  <td class="number-cell">${safeCustomer.phone || ""}</td>
                   <td>${item?.name || ""}</td>
                   <td>${item?.size || item?.sku || ""}</td>
                   <td class="number-cell">${Number(item?.returnQty) || 0}</td>
-                  <td class="price-cell">${fmt((Number(item?.pricePerDay) || 0) * (Number(item?.returnQty) || 0) * billingMultiplier)}</td>
+                  <td class="price-cell">${fmt((Number(item?.pricePerDay) || 0) * (Number(item?.returnQty) || 0))}</td>
                   <td class="number-cell">${(item?.weight || 0) * (Number(item?.returnQty) || 0)} кг</td>
-                  <td>${formatDate(new Date())}</td>
-                  <td>${formatTime(new Date())}</td>
+                  <td>${rentalDate}</td>
                 </tr>
               `).join('')}
               <tr class="summary-row">
-                <td><strong>ЖАМИ:</strong></td>
+                <td>ЖАМИ (1 кун):</td>
                 <td></td>
                 <td></td>
-                <td class="number-cell"><strong>${safeReturnedItems.reduce((sum, item) => sum + (Number(item?.returnQty) || 0), 0)}</strong></td>
-                <td class="total-cell"><strong>${fmt(safeReturnedItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.returnQty) || 0) * billingMultiplier), 0))}</strong></td>
-                <td class="number-cell"><strong>${safeReturnedItems.reduce((sum, item) => sum + ((item?.weight || 0) * (Number(item?.returnQty) || 0)), 0).toFixed(2)} кг</strong></td>
                 <td></td>
+                <td class="number-cell">${safeReturnedItems.reduce((sum, item) => sum + (Number(item?.returnQty) || 0), 0)}</td>
+                <td class="total-cell">${fmt(safeReturnedItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.returnQty) || 0)), 0))}</td>
+                <td class="number-cell">${safeReturnedItems.reduce((sum, item) => sum + ((item?.weight || 0) * (Number(item?.returnQty) || 0)), 0).toFixed(2)} кг</td>
                 <td></td>
               </tr>
               <tr class="summary-row">
-                <td colspan="8"><strong>Вақт:</strong> ${formatTimeDisplay(safeHours)}</td>
+                <td colspan="8">Вақт: ${formatTimeDisplay(safeHours)} (Қайтарилган вақт: ${returnDate} ${returnTime})</td>
+              </tr>
+              <tr class="summary-row">
+                <td colspan="8" style="position: relative; border-top: 2px solid #000;">
+                  <div style="display: flex; justify-content: space-between; width: 100%;">
+                    <span>АВАНС: ${safeAdvancePayment > 0 ? fmt(safeAdvancePayment) : '000 000'}</span>
+                    <span>ЖАМИ (соатгача): ${fmt(safeReturnedItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.returnQty) || 0) * billingMultiplier), 0))} (${returnTime})</span>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -192,51 +149,63 @@ export async function openReturnReceipt({
             <thead>
               <tr>
                 <th>No</th>
+                <th>Клиент тел</th>
                 <th>Махсулот номи</th>
                 <th>Олчам</th>
                 <th>Сони</th>
                 <th>Суммаси</th>
                 <th>Оғирлиги</th>
-                <th>Қайтарилган сана</th>
-                <th>Қайтарилган вақт</th>
+                <th>Берилган сана</th>
               </tr>
             </thead>
             <tbody>
               ${safeRemainingItems.map((item, index) => `
                 <tr>
                   <td class="number-cell">${rental?.id || ""}</td>
+                  <td class="number-cell">${safeCustomer.phone || ""}</td>
                   <td>${item?.name || ""}</td>
                   <td>${item?.size || item?.sku || ""}</td>
                   <td class="number-cell">${Number(item?.qty) || 0}</td>
-                  <td class="price-cell">${fmt((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0) * billingMultiplier)}</td>
+                  <td class="price-cell">${fmt((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0))}</td>
                   <td class="number-cell">${(item?.weight || 0) * (Number(item?.qty) || 0)} кг</td>
-                  <td>${formatDate(new Date())}</td>
-                  <td>${formatTime(new Date())}</td>
+                  <td>${rentalDate}</td>
                 </tr>
               `).join('')}
               <tr class="summary-row">
-                <td><strong>ЖАМИ:</strong></td>
+                <td>ЖАМИ</td>
                 <td></td>
                 <td></td>
-                <td class="number-cell"><strong>${safeRemainingItems.reduce((sum, item) => sum + (Number(item?.qty) || 0), 0)}</strong></td>
-                <td class="total-cell"><strong>${fmt(safeRemainingItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0) * billingMultiplier), 0))}</strong></td>
-                <td class="number-cell"><strong>${safeRemainingItems.reduce((sum, item) => sum + ((item?.weight || 0) * (Number(item?.qty) || 0)), 0).toFixed(2)} кг</strong></td>
                 <td></td>
+                <td class="number-cell">${safeRemainingItems.reduce((sum, item) => sum + (Number(item?.qty) || 0), 0)}</td>
+                <td class="total-cell">${fmt(safeRemainingItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0)), 0))}</td>
+                <td class="number-cell">${safeRemainingItems.reduce((sum, item) => sum + ((item?.weight || 0) * (Number(item?.qty) || 0)), 0).toFixed(2)} кг</td>
                 <td></td>
               </tr>
               <tr class="summary-row">
-                <td colspan="8"><strong>Вақт:</strong> ${formatTimeDisplay(safeHours)}</td>
+                <td colspan="8">Вақт: ${formatTimeDisplay(safeHours)} (Қайтарилган вақт: ${returnDate} ${returnTime})</td>
+              </tr>
+              <tr class="summary-row">
+                <td colspan="8" style="position: relative; border-top: 2px solid #000;">
+                  <div style="display: flex; justify-content: space-between; width: 100%;">
+                    <span>АВАНС: ${safeAdvancePayment > 0 ? fmt(safeAdvancePayment) : '000 000'}</span>
+                    <span>ЖАМИ (соатгача): ${fmt(safeRemainingItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0) * billingMultiplier), 0))} (${returnTime})</span>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
         ` : ''}
 
-        <div class="customer-row">
-          <div style="margin-top: 20px; padding: 15px; background: #e8f4f8; border: 1px solid #000; text-align: center;">
-            <div style="margin-bottom: 10px;"><strong>Мижоз исми ва фамилияси: ${safeCustomer.name || ""}</strong></div>
-            <div><strong>Телефон рақами: ${safeCustomer.phone || ""}</strong></div>
-          </div>
-        </div>
+        <table>
+          <tbody>
+            <tr class="customer-row">
+              <td colspan="7" style="text-align:left;">Мижоз исми ва фамилияси: ${safeCustomer.name || ""}</td>
+            </tr>
+            <tr class="customer-row">
+              <td colspan="7" style="text-align:left;">Телефон рақами: ${safeCustomer.phone || ""}</td>
+            </tr>
+          </tbody>
+        </table>
         
         <script>
           window.addEventListener('load', function() {

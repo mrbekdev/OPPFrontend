@@ -1,8 +1,8 @@
 
 import React from "react";
-import { fmt } from "../utils/helpers";
+import { fmt, formatUzbekistanDate, formatUzbekistanTime } from "../utils/helpers";
 
-export async function openPrintReceipt({ settings, customer, items, fromDate, toDate, days, subtotal, tax, total, totalWeight, preOpenedWindow, companyPhone: providedPhone, orderId }) {
+export async function openPrintReceipt({ settings, customer, items, fromDate, toDate, days, subtotal, tax, total, totalWeight, preOpenedWindow, companyPhone: providedPhone, orderId, advancePayment, startDateTime }) {
   const safeSettings = settings || {};
   let companyPhone = localStorage.getItem('companyPhone') || providedPhone || safeSettings.orgPhone || "";
   
@@ -13,6 +13,8 @@ export async function openPrintReceipt({ settings, customer, items, fromDate, to
   const safeTotalWeight = Number(totalWeight) || 0;
   const safeOrderId = orderId || "";
   const billingMultiplier = Number(days) || 1;
+  const safeAdvancePayment = Number(advancePayment) || 0;
+  const safeStartDateTime = startDateTime;
 
   // Hisoblangan vaqt (kun/soat)
   const startDate = fromDate ? new Date(fromDate) : null;
@@ -26,21 +28,12 @@ export async function openPrintReceipt({ settings, customer, items, fromDate, to
   // Sana va vaqtni formatlash
   const formatDate = (dateString) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ru-RU', {
-      day: '2-digit',
-      month: '2-digit', 
-      year: 'numeric'
-    }).replace(/\./g, ' ');
+    return formatUzbekistanDate(dateString);
   };
 
   const formatTime = (dateString) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatUzbekistanTime(dateString);
   };
 
   const formatTimeDisplay = (hours) => {
@@ -58,13 +51,15 @@ export async function openPrintReceipt({ settings, customer, items, fromDate, to
     }
   };
 
-  // Hozirgi haqiqiy soatni olish (O'zbekiston soati bilan)
-  const getCurrentTime = () => {
-    const now = new Date();
-    return now.toLocaleTimeString('ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  // Start time ni olish (O'zbekiston soati bilan)
+  const getStartTime = () => {
+    if (safeStartDateTime) {
+      return formatUzbekistanTime(safeStartDateTime);
+    }
+    if (fromDate) {
+      return formatUzbekistanTime(fromDate);
+    }
+    return formatUzbekistanTime(new Date());
   };
 
   const html = `
@@ -74,76 +69,28 @@ export async function openPrintReceipt({ settings, customer, items, fromDate, to
         <title>Чек - ${safeOrderId}</title>
         <meta charset="UTF-8" />
         <style>
-          body { 
-            font-family: Arial, sans-serif; 
-            font-size: 16px; 
-            background: white;
-            color: #000;
-            font-weight: bold;
-          }
-          .header {
-            text-align: center;
-            font-size: 20px;
-            font-weight: bold;
-          }
-          table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin: 15px 0;
-          }
-          th, td { 
-            border: 1px solid #000; 
-            padding: 12px; 
-            font-size: 16px;
-            text-align: left;
-            vertical-align: top;
-            font-weight: bold;
-          }
-          th { 
-            background: #f0f0f0; 
-            font-weight: bold;
-            text-align: center;
-            font-size: 18px;
-          }
-          .number-cell {
-            text-align: center;
-          }
-          .price-cell {
-            text-align: right;
-          }
-          .total-cell {
-            text-align: right;
-            font-weight: bold;
-          }
-          .summary-row {
-            background: #f8f8f8;
-            font-weight: bold;
-            font-size: 18px;
-          }
-          .customer-row {
-            background: #e8f4f8;
-            font-weight: bold;
-            font-size: 18px;
-          }
-          @page { 
-            margin: 10mm; 
-            size: A4;
-          }
-          @media print {
-            body { margin: 0; }
-            .no-print { display: none; }
-          }
+          body { font-family: Arial, sans-serif; font-size: 16px; background: #fff; color: #000; margin: 0; padding: 10px; font-weight: bold; }
+          .header { text-align: center; font-size: 18px; font-weight: bold; }
+          table { width: 100%; border-collapse: collapse; margin: 0; }
+          th, td { border: 1px solid #000;  font-size: 12px; text-align: left; vertical-align: top; font-weight: bold; }
+          th { background: none; text-align: center; font-size: 16px; font-weight: bold; }
+          .number-cell { text-align: center; }
+          .price-cell { text-align: right; }
+          .total-cell { text-align: right; font-weight: bold; }
+          .summary-row { background: none; font-weight: bold; font-size: 16px; }
+          .customer-row { background: none; font-weight: bold; font-size: 16px; }
+          @page { margin: 0; size: A4; }
+          @media print { body { margin: 0; } .no-print { display: none; } }
         </style>
       </head>
       <body>
-        <div class="header">
-          Корейский Опалубка Тел: ${companyPhone || ""}
-        </div>
+        <div class="header">Корейский Опалубка Тел: ${companyPhone || ""}</div>
 
         <table>
           <thead>
             <tr>
               <th>No</th>
+              <th>Клиент тел</th>
               <th>Махсулот номи</th>
               <th>Олчам</th>
               <th>Сони</th>
@@ -157,39 +104,49 @@ export async function openPrintReceipt({ settings, customer, items, fromDate, to
             ${safeItems.map((item, index) => `
               <tr>
                 <td class="number-cell">${safeOrderId || ""}</td>
+                <td class="number-cell">${safeCustomer.phone || ""}</td>
                 <td>${item?.name ?? ""}</td>
                 <td>${item?.size || item?.sku || ""}</td>
                 <td class="number-cell">${Number(item?.qty) || 0}</td>
-                <td class="price-cell">${fmt((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0) * billingMultiplier)}</td>
+                <td class="price-cell">${fmt((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0))}</td>
                 <td class="number-cell">${(item?.weight || 0) * (Number(item?.qty) || 0)} кг</td>
-                <td>${formatDate(fromDate)}</td>
-                <td>${getCurrentTime()}</td>
+                <td>${formatDate(safeStartDateTime || fromDate)}</td>
+                <td>${getStartTime()}</td>
               </tr>
             `).join('')}
+            ${safeAdvancePayment > 0 ? `
+    
+            ` : ''}
             <tr class="summary-row">
-              <td><strong>ЖАМИ:</strong></td>
+
+            </tr>
+            <tr class="summary-row">
+              <td>ЖАМИ</td>
               <td></td>
               <td></td>
-              <td class="number-cell"><strong>${safeItems.reduce((sum, item) => sum + (Number(item?.qty) || 0), 0)}</strong></td>
-              <td class="total-cell"><strong>${fmt(safeItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0) * billingMultiplier), 0))}</strong></td>
-              <td class="number-cell"><strong>${safeTotalWeight.toFixed(2)} кг</strong></td>
+              <td></td>
+              <td class="number-cell">${safeItems.reduce((sum, item) => sum + (Number(item?.qty) || 0), 0)}</td>
+              <td class="total-cell">${fmt(safeItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0)), 0))}</td>
+              <td class="number-cell">${safeTotalWeight.toFixed(2)} кг</td>
               <td></td>
               <td></td>
             </tr>
             <tr class="summary-row">
-              <td colspan="8" style="text-align:left;">
-                <strong>Вақт:</strong> ${formatTimeDisplay(elapsedHours)}
+              <td colspan="9" style="position: relative; border-top: 2px solid #000;">
+                <div style="display: flex; justify-content: space-between; width: 100%;">
+                  <span>АВАНС: ${safeAdvancePayment > 0 ? fmt(safeAdvancePayment) : '000 000'}</span>
+                  <span>ЖАМИ (соатгача): ${fmt(safeItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0) * billingMultiplier), 0))}</span>
+                </div>
               </td>
+            </tr>
+            <tr class="customer-row">
+              <td colspan="9" style="text-align:left;">Мижоз исми ва фамилияси: ${safeCustomer.name || ""}</td>
+            </tr>
+            <tr class="customer-row">
+              <td colspan="9" style="text-align:left;">Телефон рақами: ${safeCustomer.phone || ""}</td>
             </tr>
           </tbody>
         </table>
-        
-        <div class="customer-row">
-          <div style="margin-top: 20px; padding: 15px; background: #e8f4f8; border: 1px solid #000; text-align: center;">
-            <div style="margin-bottom: 10px;"><strong>Мижоз исми ва фамилияси: ${safeCustomer.name || ""}</strong></div>
-            <div><strong>Телефон рақами: ${safeCustomer.phone || ""}</strong></div>
-          </div>
-        </div>
         
         <script>
           window.addEventListener('load', function() {

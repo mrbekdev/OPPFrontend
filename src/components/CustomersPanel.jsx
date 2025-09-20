@@ -7,13 +7,21 @@ export default function CustomersPanel({ customers, setCustomers, items }) {
     lastName: "",
     phone: "",
   });
+  const [editCustomerData, setEditCustomerData] = useState({
+    id: null,
+    firstName: "",
+    lastName: "",
+    phone: "",
+  });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedCustomerOrders, setSelectedCustomerOrders] = useState([]);
   const [selectedCustomerName, setSelectedCustomerName] = useState("");
   const [error, setError] = useState(null);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [isLoadingAdd, setIsLoadingAdd] = useState(false);
+  const [isLoadingEdit, setIsLoadingEdit] = useState(false);
   const [search, setSearch] = useState("");
   const token = localStorage.getItem("token");
 
@@ -71,6 +79,70 @@ export default function CustomersPanel({ customers, setCustomers, items }) {
       alert("Тармоқ хатолиги юз берди. Сервер ишламаётган бўлиши мумкин.");
     } finally {
       setIsLoadingAdd(false);
+    }
+  };
+
+  const editCustomer = (customer) => {
+    setEditCustomerData({
+      id: customer.id,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      phone: customer.phone,
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+    setEditCustomerData({ id: null, firstName: "", lastName: "", phone: "" });
+  };
+
+  const updateCustomer = async () => {
+    if (!editCustomerData.firstName || !editCustomerData.lastName || !editCustomerData.phone) {
+      alert("Барча мажбурий майдонларни тўлдиринг!");
+      return;
+    }
+
+    setIsLoadingEdit(true);
+    try {
+      const res = await fetch(`http://localhost:3000/clients/${editCustomerData.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          firstName: editCustomerData.firstName,
+          lastName: editCustomerData.lastName,
+          phone: editCustomerData.phone,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCustomers(
+          customers.map((c) =>
+            c.id === editCustomerData.id
+              ? {
+                  ...c,
+                  name: `${data.client.firstName} ${data.client.lastName}`,
+                  firstName: data.client.firstName,
+                  lastName: data.client.lastName,
+                  phone: data.client.phone,
+                }
+              : c
+          )
+        );
+        closeEditModal();
+      } else {
+        const errorData = await res.json();
+        alert(`Хатолик: ${errorData.message || "Мижозни ўзгартиришда хатолик"}`);
+      }
+    } catch (error) {
+      console.error("Error updating customer:", error);
+      alert("Тармоқ хатолиги юз берди. Сервер ишламаётган бўлиши мумкин.");
+    } finally {
+      setIsLoadingEdit(false);
     }
   };
 
@@ -195,24 +267,24 @@ export default function CustomersPanel({ customers, setCustomers, items }) {
           <table>
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Исм</th>
-                <th>Фамилия</th>
-                <th>Телефон</th>
-                <th>Амаллар</th>
+                <th className="text-2xl">ID</th>
+                <th className="text-2xl">Исм</th>
+                <th className="text-2xl">Фамилия</th>
+                <th className="text-2xl">Телефон</th>
+                <th className="text-2xl">Амаллар</th>
               </tr>
             </thead>
             <tbody>
               {filteredCustomers.map((customer) => (
-                <tr key={customer.id}>
-                  <td>{customer.id}</td>
-                  <td>
+                <tr key={customer.id} className="hover:bg-black hover:text-white">
+                  <td className="text-2xl">{customer.id}</td>
+                  <td className="text-2xl">
                     <strong>{customer.firstName}</strong>
                   </td>
-                  <td>
+                  <td className="text-2xl">
                     <strong>{customer.lastName}</strong>
                   </td>
-                  <td>{customer.phone}</td>
+                  <td className="text-2xl">{customer.phone}</td>
                   <td>
                     <div className="row" style={{ gap: "8px" }}>
                       <button
@@ -297,6 +369,64 @@ export default function CustomersPanel({ customers, setCustomers, items }) {
                 disabled={isLoadingAdd || !newCustomer.firstName || !newCustomer.lastName || !newCustomer.phone}
               >
                 {isLoadingAdd ? "Қўшилмоқда..." : "Қўшиш"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Customer Modal */}
+      {isEditModalOpen && (
+        <div className="modal-overlay" onClick={closeEditModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Мижозни ўзгартириш</h3>
+              <button className="modal-close" onClick={closeEditModal}>
+                ✕
+              </button>
+            </div>
+            <div className="modal-body gap">
+              <div>
+                <label>Исми *</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Мижознинг исми"
+                  value={editCustomerData.firstName}
+                  onChange={(e) => setEditCustomerData({ ...editCustomerData, firstName: e.target.value })}
+                />
+              </div>
+              <div>
+                <label>Фамилия *</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Мижознинг фамилияси"
+                  value={editCustomerData.lastName}
+                  onChange={(e) => setEditCustomerData({ ...editCustomerData, lastName: e.target.value })}
+                />
+              </div>
+              <div>
+                <label>Телефон рақами *</label>
+                <input
+                  type="tel"
+                  className="input"
+                  placeholder="+998 XX XXX XX XX"
+                  value={editCustomerData.phone}
+                  onChange={(e) => setEditCustomerData({ ...editCustomerData, phone: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={closeEditModal} disabled={isLoadingEdit}>
+                Бекор қилиш
+              </button>
+              <button
+                className="btn primary"
+                onClick={updateCustomer}
+                disabled={isLoadingEdit || !editCustomerData.firstName || !editCustomerData.lastName || !editCustomerData.phone}
+              >
+                {isLoadingEdit ? "Ўзгартирилмоқда..." : "Сақлаш"}
               </button>
             </div>
           </div>

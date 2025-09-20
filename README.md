@@ -5,12 +5,14 @@ Bu ilova ijara xizmatlari uchun yaratilgan full-stack dastur hisoblanadi.
 ## Backend (OPProject)
 
 ### O'rnatish
+
 ```bash
 cd OPProject
 npm install
 ```
 
 ### Ma'lumotlar bazasini sozlash
+
 ```bash
 npx prisma generate
 npx prisma db push
@@ -18,12 +20,14 @@ npm run seed
 ```
 
 **Test foydalanuvchi ma'lumotlari:**
+
 - Login: `admin`
 - Parol: `password123`
 
 **Eslatma:** Backend ni ishga tushirishdan oldin ma'lumotlar bazasini sozlashni unutmang!
 
 ### Backend ni ishga tushirish
+
 ```bash
 npm run start:dev
 ```
@@ -33,11 +37,13 @@ Backend http://localhost:3000 da ishga tushadi.
 ## Frontend
 
 ### O'rnatish
+
 ```bash
 npm install
 ```
 
 ### Frontend ni ishga tushirish
+
 ```bash
 npm run dev
 ```
@@ -55,6 +61,7 @@ Frontend http://localhost:5173 da ishga tushadi.
 7. **Hisobotlar** - Umumiy ijara hisobotlari
 
 ### Yangi funksiyalar:
+
 - **Mahsulot hisoboti** - Har bir mahsulot uchun alohida ijara hisoboti
 - **Modal ko'rinish** - Hisobot modal oynada ko'rsatiladi
 - **Qaytarish funksiyasi** - Modal ichida to'g'ridan-to'g'ri qaytarish
@@ -72,4 +79,5 @@ Frontend http://localhost:5173 da ishga tushadi.
 - `POST /auth/register` - Ro'yxatdan o'tish
 - `GET /auth/profile` - Foydalanuvchi profilini olish
 - `PATCH /users/:id` - Foydalanuvchi ma'lumotlarini yangilash
+
 # OPPFrontend

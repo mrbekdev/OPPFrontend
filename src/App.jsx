@@ -58,32 +58,31 @@ export default function App() {
         const or = await fetch("http://localhost:3000/orders", { headers });
         if (or.ok) {
           const data = await or.json();
-          const calcDays = (from, to) => {
-            const d1 = new Date(from);
-            const d2 = new Date(to);
-            const ms = Math.max(0, d2 - d1);
-            return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
-          };
           const mapped = (data.orders || []).map((o) => ({
             id: o.id,
             customerId: o.clientId,
-            items: (o.items || []).map((i) => ({
-              itemId: i.productId,
-              qty: i.quantity - i.returned,
-              pricePerDay: i.product.price,
-              orderItemId: i.id,
-              returned: i.returned,
-              name: i.product.name,
-              size: i.product.size,
-            })),
-            fromDate: o.fromDate?.split("T")[0],
-            toDate: o.toDate?.split("T")[0],
-            days: calcDays(o.fromDate, o.toDate),
+            items: (o.items || [])
+              .map((i) => ({
+                itemId: i.productId,
+                qty: i.quantity - i.returned,
+                pricePerDay: i.product.price,
+                orderItemId: i.id,
+                returned: i.returned,
+                name: i.product.name,
+                size: i.product.size,
+                totalQuantity: i.quantity, // Keep original quantity for reference
+              }))
+              .filter((item) => item.qty > 0), // Only show items that still have quantity to return
+            fromDate: o.fromDate, // Keep full datetime for start time
+            toDate: o.toDate, // Will be null for active rentals
             subtotal: o.subtotal,
             tax: o.tax,
             total: o.total,
-            paidAt: o.createdAt,
-            returnedAt: o.status !== "PENDING" ? o.updatedAt : null,
+            advancePayment: o.advancePayment || 0,
+            advanceUsed: o.advanceUsed || 0,
+            paidAt: o.fromDate || o.createdAt, // Use start time as paidAt
+            returnedAt: o.returnedAt,
+            status: o.status,
           }));
           setRentals(mapped);
         }

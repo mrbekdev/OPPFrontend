@@ -121,7 +121,7 @@ export default function InventoryPanel({ items, setItems, rentals, setRentals, c
         const data = await res.json();
         setItems(prevItems => [...(prevItems || []), data.product]);
         closeAddModal();
-        alert("Маҳсулот муваффақиятли қўшилди!");
+
       } else {
         const errorData = await res.json();
         alert(`Хатолик: ${errorData.message || 'Маҳсулот қўшишда хатолик'}`);
@@ -261,9 +261,6 @@ export default function InventoryPanel({ items, setItems, rentals, setRentals, c
         const data = await res.json();
         setItems((prevItems || []).map(it => it.id === editItemForm.id ? data.product : it));
         closeEditModal();
-      } else {
-        const e = await res.json();
-        alert(e.message || "Янгилашда хатолик");
       }
     } catch (e) {
       alert("Тармоқ хатолиги");
@@ -295,29 +292,29 @@ export default function InventoryPanel({ items, setItems, rentals, setRentals, c
           <table>
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Ном</th>
-                <th>Ўлчам</th>
-                <th>Нарх</th>
-                <th>Сон</th>
-                <th>Оғирлик</th>
-                <th>Амаллар</th>
+                <th className="text-2xl">ID</th>
+                <th className="text-2xl">Ном</th>
+                <th className="text-2xl">Ўлчам</th>
+                <th className="text-2xl">Нарх</th>
+                <th className="text-2xl">Сон</th>
+                <th className="text-2xl">Оғирлик</th>
+                <th className="text-2xl">Амаллар</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.id}</td>
-                  <td>
+                <tr key={item.id} className="hover:bg-black hover:text-white">
+                  <td className="text-xl">{item.id}</td>
+                  <td className="text-2xl">
                     <strong>{item.name}</strong>
                   </td>
-                  <td>{item.size}</td>
-                  <td>{fmt(item.price)}</td>
-                  <td style={{ color: item.count > 0 ? "#28a745" : "#dc3545" }}>
+                  <td className="text-2xl">{item.size}</td>
+                  <td className="text-2xl">{fmt(item.price)}</td>
+                  <td className="text-2xl" style={{ color: item.count > 0 ? "#28a745" : "#dc3545" }}>
                     <strong>{item.count}</strong>
                   </td>
-                  <td>{item.weight ? `${item.weight} кг` : "-"}</td>
-                  <td>
+                  <td className="text-2xl">{item.weight ? `${item.weight} кг` : "-"}</td>
+                  <td >
                     <div className="row" style={{ gap: "8px" }}>
                       <button
                         className="btn"
