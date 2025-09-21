@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { fmt, formatUzbekistanDate, formatUzbekistanTime, formatUzbekistanDateTime, toUzbekistanTime } from "../utils/helpers";
 import { openReturnReceipt } from "./ReturnReceipt";
 import { openPrintReceipt } from "./Receipt";
@@ -12,17 +12,35 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
   const [viewReturnedModal, setViewReturnedModal] = useState(false);
   const [viewReturnedRental, setViewReturnedRental] = useState(null);
   const [customerRating, setCustomerRating] = useState(""); // "good", "bad", or ""
+  const [editModal, setEditModal] = useState(false);
+  const [editRental, setEditRental] = useState(null);
+  const [editDateTime, setEditDateTime] = useState("");
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   const token = localStorage.getItem("token");
+
+  // Update current time every minute to refresh time displays
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Force re-render when component mounts to refresh time calculations
+  useEffect(() => {
+    setCurrentTime(new Date());
+  }, []);
 
   const nameById = (id) => {
     const c = customers.find((c) => c.id === id);
     return c ? `${c.name} (${c.phone || ''})` : id;
   };
 
-  const calcHoursFromStartTime = (startTime) => {
-    const startDate = toUzbekistanTime(startTime);
-    const now = toUzbekistanTime(new Date());
+  const calcHoursFromStartTime = (createdAt) => {
+    const startDate = toUzbekistanTime(createdAt);
+    const now = toUzbekistanTime(currentTime);
     
     // If rental hasn't started yet, return 0 hours
     if (now < startDate) {
@@ -35,23 +53,37 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
   };
 
   // Billing multiplier: full days + proportional hours
-  const calcBillingMultiplier = (startTime) => {
-    const hours = calcHoursFromStartTime(startTime);
+  const calcBillingMultiplier = (createdAt) => {
+    const hours = calcHoursFromStartTime(createdAt);
     
     // If rental hasn't started yet, no billing
     if (hours === 0) return 0;
     
-    // Minimum 1 day billing once started
+    // 1-24 hours = 1 day charge, after 24 hours = hourly calculation
     if (hours <= 24) return 1;
-    const fullDays = Math.floor(hours / 24);
-    const remainingHours = hours % 24;
-    return fullDays + (remainingHours / 24);
+    return 1 + ((hours - 24) / 24);
   };
 
-  const formatTimeDisplay = (startTime) => {
+  // Billing multiplier for returned rentals
+  const calcBillingMultiplierForReturned = (startTime, endTime) => {
     const startDate = toUzbekistanTime(startTime);
-    const now = toUzbekistanTime(new Date());
-    const hours = calcHoursFromStartTime(startTime);
+    const endDate = toUzbekistanTime(endTime);
+    
+    const ms = Math.max(0, endDate.getTime() - startDate.getTime());
+    const hours = Math.ceil(ms / (1000 * 60 * 60));
+    
+    // If rental duration is 0, no billing
+    if (hours === 0) return 0;
+    
+    // 1-24 hours = 1 day charge, after 24 hours = hourly calculation
+    if (hours <= 24) return 1;
+    return 1 + ((hours - 24) / 24);
+  };
+
+  const formatTimeDisplay = (createdAt) => {
+    const startDate = toUzbekistanTime(createdAt);
+    const now = toUzbekistanTime(currentTime);
+    const hours = calcHoursFromStartTime(createdAt);
     
     // If rental hasn't started yet, show when it will start
     if (now < startDate) {
@@ -73,6 +105,50 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
         return `${days} кун`;
       } else {
         return `${days} кун ${remainingHours} соат`;
+      }
+    }
+  };
+
+  // Format time display for returned rentals
+  const formatTimeDisplayForReturned = (startTime, endTime) => {
+    const startDate = toUzbekistanTime(startTime);
+    const endDate = toUzbekistanTime(endTime);
+    
+    const ms = Math.max(0, endDate.getTime() - startDate.getTime());
+    const hours = Math.ceil(ms / (1000 * 60 * 60));
+    
+    if (hours <= 0) return "0 соат";
+    
+    if (hours <= 24) {
+      return `1 кун`;
+    } else {
+      const days = Math.floor(hours / 24);
+      const remainingHours = hours % 24;
+      if (remainingHours === 0) {
+        return `${days} кун`;
+      } else {
+        return `${days} кун ${remainingHours} соат`;
+      }
+    }
+  };
+
+  // Format time display from stored backend values
+  const formatTimeDisplayFromStored = (days, hours) => {
+    // Handle undefined/null values
+    const safeDays = days || 0;
+    const safeHours = hours || 0;
+    
+    if (safeDays === 0 && safeHours === 0) return "0 соат";
+    
+    const totalHours = safeDays * 24 + safeHours;
+    
+    if (totalHours <= 24) {
+      return `1 кун`;
+    } else {
+      if (safeHours === 0) {
+        return `${safeDays} кун`;
+      } else {
+        return `${safeDays} кун ${safeHours} соат`;
       }
     }
   };
@@ -125,8 +201,8 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
 
   const calculateReturnAmount = (rental, quantities) => {
     if (!rental) return 0;
-    // Use fromDate (start time) instead of paidAt for calculation
-    const multiplier = calcBillingMultiplier(rental.fromDate || rental.paidAt);
+    // Use createdAt (start time) for calculation
+    const multiplier = calcBillingMultiplier(rental.createdAt || rental.fromDate || rental.paidAt);
     let totalAmount = 0;
     
     rental.items.forEach((item) => {
@@ -145,8 +221,8 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
   // Chek chiqarish funksiyasi
     const printReturnReceipt = (rental, returnedItems, remainingItems, returnAmount) => {
       const customer = customers.find(c => c.id === rental.customerId) || {};
-      const hours = calcHoursFromStartTime(rental.fromDate || rental.paidAt);
-      const multiplier = calcBillingMultiplier(rental.fromDate || rental.paidAt);
+      const hours = calcHoursFromStartTime(rental.createdAt || rental.fromDate || rental.paidAt);
+      const multiplier = calcBillingMultiplier(rental.createdAt || rental.fromDate || rental.paidAt);
       const originalAmount = rental.items.reduce((s, it) => {
         const product = items.find((i) => i.id === it.itemId);
         const price = product ? product.price : (it.pricePerDay || 0);
@@ -175,6 +251,19 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
       returnQuantity: item.qty
     }));
 
+    // Calculate actual rental duration for full return
+    const startTime = rental.createdAt || rental.fromDate || rental.paidAt;
+    const endTime = new Date();
+    const startDate = toUzbekistanTime(startTime);
+    const endDate = toUzbekistanTime(endTime);
+    
+    const totalHours = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60));
+    const rentalDays = Math.floor(totalHours / 24);
+    const rentalHours = totalHours % 24;
+    
+    // Calculate billing multiplier: 1-24 hours = 1 day, after 24 hours = hourly calculation
+    const billingMultiplier = totalHours <= 24 ? 1 : 1 + ((totalHours - 24) / 24);
+
     try {
       const res = await fetch(`http://localhost:3000/orders/${rental.id}/return`, {
         method: "POST",
@@ -182,7 +271,12 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ items: allItemsReturned }),
+        body: JSON.stringify({ 
+          items: allItemsReturned,
+          rentalDays: rentalDays,
+          rentalHours: rentalHours,
+          billingMultiplier: billingMultiplier
+        }),
       });
 
       if (res.ok) {
@@ -196,17 +290,19 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
             name: product?.name || item.name,
             size: product?.size || item.size,
             returnQty: item.qty,
-            pricePerDay: product?.price || item.pricePerDay
+            pricePerDay: product?.price || item.pricePerDay,
+            weight: product?.weight || 0
           };
         });
 
-        const multiplier = calcBillingMultiplier(rental.fromDate || rental.paidAt);
-        const totalAmount = rental.items.reduce((s, it) => {
-          const product = items.find((i) => i.id === it.itemId);
-          const price = product ? product.price : (it.pricePerDay || 0);
-          return s + price * (it.qty || 0) * multiplier;
-        }, 0);
-        const returnAmount = totalAmount;
+        // Use the calculated billing multiplier from the API response
+        const returnAmount = data.returnRecords ? 
+          data.returnRecords.reduce((sum, record) => sum + record.returnAmount, 0) :
+          rental.items.reduce((s, it) => {
+            const product = items.find((i) => i.id === it.itemId);
+            const price = product ? product.price : (it.pricePerDay || 0);
+            return s + price * (it.qty || 0) * billingMultiplier;
+          }, 0);
         
         printReturnReceipt(rental, returnedItems, [], returnAmount);
 
@@ -278,6 +374,19 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
       return;
     }
 
+    // Calculate actual rental duration
+    const startTime = selectedRental.createdAt || selectedRental.fromDate || selectedRental.paidAt;
+    const endTime = new Date();
+    const startDate = toUzbekistanTime(startTime);
+    const endDate = toUzbekistanTime(endTime);
+    
+    const totalHours = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60));
+    const rentalDays = Math.floor(totalHours / 24);
+    const rentalHours = totalHours % 24;
+    
+    // Calculate billing multiplier: 1-24 hours = 1 day, after 24 hours = hourly calculation
+    const billingMultiplier = totalHours <= 24 ? 1 : 1 + ((totalHours - 24) / 24);
+
     try {
       const res = await fetch(`http://localhost:3000/orders/${selectedRental.id}/return`, {
         method: "POST",
@@ -285,7 +394,12 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ items: itemsToReturn }),
+        body: JSON.stringify({ 
+          items: itemsToReturn,
+          rentalDays: rentalDays,
+          rentalHours: rentalHours,
+          billingMultiplier: billingMultiplier
+        }),
       });
 
       if (res.ok) {
@@ -305,7 +419,8 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
               name: product?.name || item.name,
               size: product?.size || item.size,
               returnQty: returnQty,
-              pricePerDay: product?.price || item.pricePerDay
+              pricePerDay: product?.price || item.pricePerDay,
+              weight: product?.weight || 0
             });
           }
           
@@ -315,12 +430,16 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
               name: product?.name || item.name,
               size: product?.size || item.size,
               qty: item.qty - returnQty,
-              pricePerDay: product?.price || item.pricePerDay
+              pricePerDay: product?.price || item.pricePerDay,
+              weight: product?.weight || 0
             });
           }
         });
 
-        const returnAmount = calculateReturnAmount(selectedRental, returnQuantities);
+        // Use the calculated return amount from API response
+        const returnAmount = data.returnRecords ? 
+          data.returnRecords.reduce((sum, record) => sum + record.returnAmount, 0) :
+          calculateReturnAmount(selectedRental, returnQuantities);
         
         // Chek chiqarish
         printReturnReceipt(selectedRental, returnedItems, remainingItems, returnAmount);
@@ -353,50 +472,69 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
         
         if (refreshResponse.ok) {
           const refreshData = await refreshResponse.json();
-          const mapped = (refreshData.orders || []).map((o) => ({
-            id: o.id,
-            customerId: o.clientId,
-            items: (o.items || [])
-              .map((i) => ({
-                itemId: i.productId,
-                qty: i.quantity - i.returned,
-                pricePerDay: i.product.price,
-                orderItemId: i.id,
-                returned: i.returned,
-                name: i.product.name,
-                size: i.product.size,
-                totalQuantity: i.quantity,
-              }))
-              .filter((item) => item.qty > 0),
-            fromDate: o.fromDate,
-            toDate: o.toDate,
-            subtotal: o.subtotal,
-            tax: o.tax,
-            total: o.total,
-            advancePayment: o.advancePayment || 0,
-            advanceUsed: o.advanceUsed || 0,
-            paidAt: o.fromDate || o.createdAt,
-            returnedAt: o.returnedAt,
-            status: o.status,
-          }));
+          const mapped = (refreshData.orders || [])
+            .filter(o => !o.returnedAt) // Only include active (non-returned) orders
+            .map((o) => ({
+              id: o.id,
+              customerId: o.clientId,
+              items: (o.items || [])
+                .map((i) => ({
+                  itemId: i.productId,
+                  qty: i.quantity - i.returned,
+                  pricePerDay: i.product.price,
+                  orderItemId: i.id,
+                  returned: i.returned,
+                  name: i.product.name,
+                  size: i.product.size,
+                  totalQuantity: i.quantity,
+                }))
+                .filter((item) => item.qty > 0), // Only keep items with remaining quantity
+              fromDate: o.fromDate,
+              createdAt: o.createdAt,
+              toDate: o.toDate,
+              subtotal: o.subtotal,
+              tax: o.tax,
+              total: o.total,
+              advancePayment: o.advancePayment || 0,
+              advanceUsed: o.advanceUsed || 0,
+              paidAt: o.createdAt || o.fromDate,
+              returnedAt: o.returnedAt,
+              status: o.status,
+              rentalDays: o.rentalDays,
+              rentalHours: o.rentalHours,
+              billingMultiplier: o.billingMultiplier,
+            }));
           setRentals(mapped);
         } else {
           // Fallback to local update if refresh fails
           setRentals((rs) =>
-            rs.map((r) => {
-              if (r.id === selectedRental.id) {
-                return {
-                  ...r,
-                  returnedAt: allItemsReturned ? new Date().toISOString() : r.returnedAt,
-                  items: r.items
-                    .map((item) => {
-                      const returnedQty = returnQuantities[item.itemId] || 0;
-                      return { ...item, qty: item.qty - returnedQty, returned: (item.returned || 0) + returnedQty };
-                    })
-                    .filter((item) => item.qty > 0),
-                };
+            rs.filter((r) => {
+              // If this is the rental being returned and all items are returned, remove it from the list
+              if (r.id === selectedRental.id && allItemsReturned) {
+                return false;
               }
-              return r;
+              // If this is the rental being returned but not all items are returned, update it
+              if (r.id === selectedRental.id) {
+                const updatedItems = r.items
+                  .map((item) => {
+                    const returnedQty = returnQuantities[item.itemId] || 0;
+                    return { ...item, qty: item.qty - returnedQty, returned: (item.returned || 0) + returnedQty };
+                  })
+                  .filter((item) => item.qty > 0);
+                
+                // If no items left after return, remove the rental
+                if (updatedItems.length === 0) {
+                  return false;
+                }
+                
+                // Update the rental with remaining items
+                r.items = updatedItems;
+                r.rentalDays = data.returnRecords?.[0]?.rentalDays || rentalDays;
+                r.rentalHours = data.returnRecords?.[0]?.rentalHours || rentalHours;
+                r.billingMultiplier = data.returnRecords?.[0]?.billingMultiplier || billingMultiplier;
+                r.total = returnAmount;
+              }
+              return true;
             })
           );
         }
@@ -436,8 +574,8 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
   const printCurrentListReceipt = async () => {
     if (!selectedRental) return;
     const customer = customers.find(c => c.id === selectedRental.customerId) || {};
-    const multiplier = calcBillingMultiplier(selectedRental.fromDate || selectedRental.paidAt);
-    const hours = calcHoursFromStartTime(selectedRental.fromDate || selectedRental.paidAt);
+    const multiplier = calcBillingMultiplier(selectedRental.createdAt || selectedRental.fromDate || selectedRental.paidAt);
+    const hours = calcHoursFromStartTime(selectedRental.createdAt || selectedRental.fromDate || selectedRental.paidAt);
     const itemsForReceipt = (selectedRental.items || []).map(it => ({
       name: (items.find(i => i.id === it.itemId)?.name) || it.name,
       size: (items.find(i => i.id === it.itemId)?.size) || it.size,
@@ -450,7 +588,7 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
       settings,
       customer: { name: customer.name, phone: customer.phone },
       items: itemsForReceipt,
-      fromDate: selectedRental.fromDate || selectedRental.paidAt,
+      fromDate: selectedRental.createdAt || selectedRental.fromDate || selectedRental.paidAt,
       toDate: new Date().toISOString(),
       days: multiplier,
       hours,
@@ -493,28 +631,81 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
     }
   };
 
-  // Show all rentals (active and returned)
+  // Open edit modal
+  const openEditModal = (rental) => {
+    setEditRental(rental);
+    // Convert createdAt to datetime-local format
+    const startTime = rental.createdAt || rental.fromDate || rental.paidAt;
+    if (startTime) {
+      const date = new Date(startTime);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      setEditDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+    }
+    setEditModal(true);
+  };
+
+  // Close edit modal
+  const closeEditModal = () => {
+    setEditModal(false);
+    setEditRental(null);
+    setEditDateTime("");
+  };
+
+  // Save edited date time
+  const saveEditedDateTime = async () => {
+    if (!editRental || !editDateTime) return;
+    
+    try {
+      const res = await fetch(`http://localhost:3000/orders/${editRental.id}/edit-start-time`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ startDateTime: editDateTime }),
+      });
+
+      if (res.ok) {
+        // Update local state
+        setRentals(prev => prev.map(r => 
+          r.id === editRental.id 
+            ? { ...r, createdAt: editDateTime, fromDate: null, paidAt: editDateTime }
+            : r
+        ));
+        alert("Олинган сана ва вақт муваффақиятли ўзгартирилди!");
+        closeEditModal();
+      } else {
+        const errorData = await res.json();
+        alert(`Хатолик: ${errorData.message || "Ўзгартиришда хатолик юз берди"}`);
+      }
+    } catch (error) {
+      console.error("Error updating start time:", error);
+      alert("Тармоқ хатолиги юз берди");
+    }
+  };
+
+  // Show only active rentals and sort by ID descending
   let filteredRentals = rentals.filter((r) => {
+    // Only show active rentals (not returned)
+    if (r.returnedAt) return false;
+    
     const q = search.toLowerCase();
     const idMatch = String(r.id).includes(q);
     const nameMatch = nameById(r.customerId).toLowerCase().includes(q);
     return idMatch || nameMatch;
-  });
-  if (statusFilter === "active") filteredRentals = filteredRentals.filter(r => !r.returnedAt);
-  if (statusFilter === "returned") filteredRentals = filteredRentals.filter(r => !!r.returnedAt);
+  }).sort((a, b) => b.id - a.id); // Sort by ID descending (newest first)
 
   return (
     <div className="gap">
       <div className="card gap">
         <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <h2>Ижаралар рўйхати</h2>
+          <h2>Ижарадаги товарлар рўйхати</h2>
           <div style={{ display: 'flex', gap: 12 }}>
-            <select className="input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-              <option value="all">Барчаси</option>
-              <option value="active">Ижарадагилар</option>
-              <option value="returned">Қайтарилганлар</option>
-            </select>
-            <input className="input" style={{ width: 220 }} placeholder="ID ёки мижоз (исм/фамилия)" value={search} onChange={(e)=> setSearch(e.target.value)} />
+            <input className="input" style={{ width: 350 }} placeholder="ID ёки мижоз (исм/фамилия)" value={search} onChange={(e)=> setSearch(e.target.value)} />
           </div>
         </div>
         <div className="table-wrap">
@@ -523,18 +714,24 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
               <tr>
                 <th>ID</th>
                 <th>Мижоз</th>
-                <th>Олинган сана ва вақт</th>
+                <th>Сана вақт</th>
                 <th>Вақт</th>
                 <th>Сумма</th>
                 <th>Статус</th>
-                <th></th>
+                <th>Амаллар</th>
               </tr>
             </thead>
             <tbody>
               {filteredRentals.map((r) => {
-                const multiplier = calcBillingMultiplier(r.fromDate || r.paidAt);
-                const total = r.items.reduce((s,it)=> s + (it.pricePerDay||0) * (it.qty||0) * multiplier,0);
                 const isReturned = !!r.returnedAt;
+                // Use stored values from backend if available, otherwise calculate
+                const multiplier = isReturned && r.billingMultiplier != null ? 
+                  r.billingMultiplier :
+                  (isReturned ? 
+                    calcBillingMultiplierForReturned(r.createdAt || r.fromDate || r.paidAt, r.returnedAt) :
+                    calcBillingMultiplier(r.createdAt || r.fromDate || r.paidAt));
+                // For active rentals, calculate total based on current items and live multiplier
+                const total = r.items.reduce((s,it)=> s + (it.pricePerDay||0) * (it.qty||0) * multiplier,0);
                 return (
                   <tr
                     key={r.id}
@@ -562,17 +759,40 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
                     <td className="mono text-2xl">{r.id}</td>
                     <td className="text-2xl">{nameById(r.customerId)}</td>
                     <td className="text-2xl">
-                      {formatUzbekistanDate(r.fromDate || r.paidAt)}&nbsp;&nbsp;&nbsp;
+                      {formatUzbekistanDate(r.createdAt || r.fromDate || r.paidAt)}&nbsp;&nbsp;&nbsp;
                       <span style={{ color: '#666' }}>
-                        {formatUzbekistanTime(r.fromDate || r.paidAt)}
+                        {formatUzbekistanTime(r.createdAt || r.fromDate || r.paidAt)}
                       </span>
                     </td>
-                    <td className="text-2xl">{formatTimeDisplay(r.fromDate || r.paidAt)}</td>
+                    <td className="text-2xl">{isReturned && r.rentalDays != null && r.rentalHours != null ? 
+                      formatTimeDisplayFromStored(r.rentalDays, r.rentalHours) :
+                      (isReturned ? 
+                        formatTimeDisplayForReturned(r.createdAt || r.fromDate || r.paidAt, r.returnedAt) :
+                        formatTimeDisplay(r.createdAt || r.fromDate || r.paidAt))
+                    }</td>
                     <td className="text-2xl">{fmt(total)}</td>
                     <td className="text-2xl" style={{ color: isReturned ? "#059669" : "#f59e0b" }}>
                       {isReturned ? "Қайтарилган" : "Ижарада"}
                     </td>
                     <td>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(r);
+                        }}
+                        className="btn btn-sm"
+                        style={{
+                          padding: '4px 8px',
+                          fontSize: '12px',
+                          backgroundColor: '#3b82f6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✏️ Таҳрирлаш
+                      </button>
                     </td>
                   </tr>
                 );
@@ -593,9 +813,9 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
             <div className="modal-body gap">
               <div style={{ background: '#f0f9ff', padding: '12px', borderRadius: '8px', marginBottom: '16px', border: '1px solid #0ea5e9' }}>
                 <div>
-                  <strong>Олинган сана ва вақт:</strong> {formatUzbekistanDate(viewReturnedRental.fromDate || viewReturnedRental.paidAt)}&nbsp;&nbsp;&nbsp;
+                  <strong>Олинган сана ва вақт:</strong> {formatUzbekistanDate(viewReturnedRental.createdAt || viewReturnedRental.fromDate || viewReturnedRental.paidAt)}&nbsp;&nbsp;&nbsp;
                   <span style={{ color: '#666' }}>
-                    {formatUzbekistanTime(viewReturnedRental.fromDate || viewReturnedRental.paidAt)}
+                    {formatUzbekistanTime(viewReturnedRental.createdAt || viewReturnedRental.fromDate || viewReturnedRental.paidAt)}
                   </span>
                 </div>
                 <div>
@@ -604,7 +824,7 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
                     {formatUzbekistanTime(viewReturnedRental.returnedAt)}
                   </span>
                 </div>
-                <div><strong>Ижарада бўлган вақт:</strong> {formatTimeDisplay(viewReturnedRental.fromDate || viewReturnedRental.paidAt)}</div>
+                <div><strong>Ижарада бўлган вақт:</strong> {formatTimeDisplay(viewReturnedRental.createdAt || viewReturnedRental.fromDate || viewReturnedRental.paidAt)}</div>
               </div>
               <div>
                 <strong>Мижоз:</strong> {(() => {
@@ -646,8 +866,8 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
                 onClick={async () => {
                   // Print receipt for returned rental
                   const customer = customers.find(c => c.id === viewReturnedRental.customerId) || {};
-                  const multiplier = calcBillingMultiplier(viewReturnedRental.fromDate || viewReturnedRental.paidAt);
-                  const hours = calcHoursFromStartTime(viewReturnedRental.fromDate || viewReturnedRental.paidAt);
+                  const multiplier = calcBillingMultiplier(viewReturnedRental.createdAt || viewReturnedRental.fromDate || viewReturnedRental.paidAt);
+                  const hours = calcHoursFromStartTime(viewReturnedRental.createdAt || viewReturnedRental.fromDate || viewReturnedRental.paidAt);
                   const itemsForReceipt = (viewReturnedRental.items || []).map(it => ({
                     name: (items.find(i => i.id === it.itemId)?.name) || it.name,
                     size: (items.find(i => i.id === it.itemId)?.size) || it.size,
@@ -660,7 +880,7 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
                     settings,
                     customer: { name: customer.name, phone: customer.phone },
                     items: itemsForReceipt,
-                    fromDate: viewReturnedRental.fromDate || viewReturnedRental.paidAt,
+                    fromDate: viewReturnedRental.createdAt || viewReturnedRental.fromDate || viewReturnedRental.paidAt,
                     toDate: viewReturnedRental.returnedAt,
                     days: multiplier,
                     hours,
@@ -702,9 +922,9 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
                   <div>
                     <div><strong>Мижоз:</strong> {nameById(selectedRental.customerId)}</div>
                     <div>
-                      <strong>Олинган сана ва вақт:</strong> {formatUzbekistanDate(selectedRental.fromDate || selectedRental.paidAt)}&nbsp;&nbsp;&nbsp;
+                      <strong>Олинган сана ва вақт:</strong> {formatUzbekistanDate(selectedRental.createdAt || selectedRental.fromDate || selectedRental.paidAt)}&nbsp;&nbsp;&nbsp;
                       <span style={{ color: '#666' }}>
-                        {formatUzbekistanTime(selectedRental.fromDate || selectedRental.paidAt)}
+                        {formatUzbekistanTime(selectedRental.createdAt || selectedRental.fromDate || selectedRental.paidAt)}
                       </span>
                     </div>
                     <div>
@@ -713,9 +933,9 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
                         {formatUzbekistanTime(new Date())}
                       </span>
                     </div>
-                    <div><strong>Вақт:</strong> {formatTimeDisplay(selectedRental.fromDate || selectedRental.paidAt)}</div>
+                    <div><strong>Вақт:</strong> {formatTimeDisplay(selectedRental.createdAt || selectedRental.fromDate || selectedRental.paidAt)}</div>
                     <div><strong>Жами сумма:</strong> {fmt((() => {
-                      const multiplier = calcBillingMultiplier(selectedRental.fromDate || selectedRental.paidAt);
+                      const multiplier = calcBillingMultiplier(selectedRental.createdAt || selectedRental.fromDate || selectedRental.paidAt);
                       let totalAmount = 0;
                       Object.keys(returnQuantities).forEach((itemId) => {
                         const returnQty = returnQuantities[itemId] || 0;
@@ -729,6 +949,19 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
                       });
                       return totalAmount;
                     })())}</div>
+                    <div><strong>Жами вазн:</strong> {(() => {
+                      let totalWeight = 0;
+                      Object.keys(returnQuantities).forEach((itemId) => {
+                        const returnQty = returnQuantities[itemId] || 0;
+                        if (returnQty > 0) {
+                          const product = items.find((i) => i.id == itemId);
+                          if (product) {
+                            totalWeight += (product.weight || 0) * returnQty;
+                          }
+                        }
+                      });
+                      return totalWeight;
+                    })()} кг</div>
                   </div>
                   <div>
                     <div><strong>Аванс:</strong> {fmt(selectedRental.advancePayment || 0)}</div>
@@ -784,7 +1017,7 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
               
               {selectedRental.items.map((item) => {
                 const product = items.find((i) => i.id === item.itemId);
-                const multiplier = calcBillingMultiplier(selectedRental.fromDate || selectedRental.paidAt);
+                const multiplier = calcBillingMultiplier(selectedRental.createdAt || selectedRental.fromDate || selectedRental.paidAt);
                 const returnQty = returnQuantities[item.itemId] || 0;
                 const price = product ? product.price : (item.pricePerDay || 0);
                 const itemAmount = price * returnQty * multiplier;
@@ -792,7 +1025,7 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
                 return (
                   <div key={item.itemId}>
                     <label>
-                      {product?.name || item.name} ({product?.size || item.size}) - Қолган: {item.qty}
+                      {product?.name || item.name} ({product?.size || item.size}) - Вазн: {product?.weight || 0} кг - Қолган: {item.qty}
                     </label>
                     <div className="row" style={{ alignItems: "center", gap: "8px" }}>
                       <input
@@ -836,7 +1069,7 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
                 style={{ marginLeft: "10px" }}
               >
                 Тўлиқ қайтариш ({fmt((() => {
-                  const multiplier = calcBillingMultiplier(selectedRental.fromDate || selectedRental.paidAt);
+                  const multiplier = calcBillingMultiplier(selectedRental.createdAt || selectedRental.fromDate || selectedRental.paidAt);
                   const totalAmount = selectedRental.items.reduce((s, it) => {
                     const product = items.find((i) => i.id === it.itemId);
                     const price = product ? product.price : (it.pricePerDay || 0);
@@ -851,6 +1084,51 @@ export default function ReturnPanel({ items, setItems, rentals, setRentals, cust
                 style={{ marginLeft: "auto" }}
               >
                 🖨️ Рўйхатни чекда чиқариш
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit DateTime Modal */}
+      {editModal && editRental && (
+        <div className="modal-overlay" onClick={closeEditModal}>
+          <div className="modal-content" style={{ maxWidth: '500px', width: '95%' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Олинган сана ва вақтни таҳрирлаш</h3>
+              <button className="modal-close" onClick={closeEditModal}>✕</button>
+            </div>
+            <div className="modal-body gap">
+              <div style={{ background: '#f0f9ff', padding: '12px', borderRadius: '8px', marginBottom: '16px', border: '1px solid #0ea5e9' }}>
+                <div><strong>Ижара ID:</strong> {editRental.id}</div>
+                <div><strong>Мижоз:</strong> {nameById(editRental.customerId)}</div>
+                <div><strong>Ҳозирги сана ва вақт:</strong> {(() => {
+                  const currentTime = editRental.createdAt || editRental.fromDate || editRental.paidAt;
+                  return `${formatUzbekistanDate(currentTime)} ${formatUzbekistanTime(currentTime)}`;
+                })()}</div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Янги олинган сана ва вақт
+                </label>
+                <input
+                  type="datetime-local"
+                  value={editDateTime}
+                  onChange={(e) => setEditDateTime(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={closeEditModal}>Бекор қилиш</button>
+              <button
+                className="btn primary"
+                onClick={saveEditedDateTime}
+                disabled={!editDateTime}
+                style={{ marginLeft: "auto" }}
+              >
+                Сақлаш
               </button>
             </div>
           </div>

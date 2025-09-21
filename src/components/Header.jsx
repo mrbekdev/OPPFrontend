@@ -6,6 +6,7 @@ import { PiPackageLight } from "react-icons/pi";
 import { HiOutlineUsers } from "react-icons/hi";
 import { HiOutlineChartBar } from "react-icons/hi";
 import { HiOutlineCog6Tooth } from "react-icons/hi2";
+import { HiOutlineClipboardDocumentList } from "react-icons/hi2";
 
 export default function Header({ orgName, active, onTab, onLogout }) {
   const [user, setUser] = useState(null);
@@ -14,6 +15,7 @@ export default function Header({ orgName, active, onTab, onLogout }) {
   const tabs = [
     ["rent", "Ижара бериш", HiOutlineDocumentText, "#007bff"],
     ["return", "Қайтариш", TbArrowBackUp, "#28a745"],
+    ["returns", "Қайтарилганлар", HiOutlineClipboardDocumentList, "#dc3545"],
     ["inventory", "Товарлар", PiPackageLight, "#ffc107"],
     ["customers", "Мижозлар", HiOutlineUsers, "#17a2b8"],
     ["reports", "Ҳисоботлар", HiOutlineChartBar, "#6f42c1"],

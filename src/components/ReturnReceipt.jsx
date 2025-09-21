@@ -72,10 +72,10 @@ export async function openReturnReceipt({
         <title>Қайтариш чеки - ${rental?.id || ""}</title>
         <meta charset="UTF-8" />
         <style>
-          body { font-family: Arial, sans-serif; font-size: 16px; background: #fff; color: #000; margin: 0; padding: 10px; font-weight: bold; }
-          .header { text-align: center; font-size: 12px; font-weight: bold; }
+          body { font-family: Arial, sans-serif; font-size: 16px; background: #fff; color: #000; margin: 0; padding: 20px; font-weight: bold; }
+          .header { text-align: center; font-size: 18px; font-weight: bold; }
           table { width: 100%; border-collapse: collapse; margin: 0; }
-          th, td { border: 1px solid #000;  font-size: 16px; text-align: left; vertical-align: top; font-weight: bold; }
+          th, td { border: 1px solid #000;  font-size: 12px; text-align: left; vertical-align: top; font-weight: bold; }
           th { background: none; text-align: center; font-size: 16px; font-weight: bold; }
           .number-cell { text-align: center; }
           .price-cell { text-align: right; }
@@ -102,7 +102,7 @@ export async function openReturnReceipt({
                 <th>Сони</th>
                 <th>Суммаси</th>
                 <th>Оғирлиги</th>
-                <th>Берилган сана</th>
+                <th>Сана вақт</th>
               </tr>
             </thead>
             <tbody>
@@ -112,10 +112,10 @@ export async function openReturnReceipt({
                   <td class="number-cell">${safeCustomer.phone || ""}</td>
                   <td>${item?.name || ""}</td>
                   <td>${item?.size || item?.sku || ""}</td>
-                  <td class="number-cell">${Number(item?.returnQty) || 0}</td>
-                  <td class="price-cell">${fmt((Number(item?.pricePerDay) || 0) * (Number(item?.returnQty) || 0))}</td>
-                  <td class="number-cell">${(item?.weight || 0) * (Number(item?.returnQty) || 0)} кг</td>
-                  <td>${rentalDate}</td>
+                  <td class="number-cell">${Number(item?.returnedQty || item?.qty) || 0}</td>
+                  <td class="price-cell">${fmt((Number(item?.pricePerDay) || 0) * (Number(item?.returnedQty || item?.qty) || 0))}</td>
+                  <td class="number-cell">${(item?.weight || 0) * (Number(item?.returnedQty || item?.qty) || 0)} кг</td>
+                  <td>${rentalDate} ${rentalTime}</td>
                 </tr>
               `).join('')}
               <tr class="summary-row">
@@ -123,9 +123,9 @@ export async function openReturnReceipt({
                 <td></td>
                 <td></td>
                 <td></td>
-                <td class="number-cell">${safeReturnedItems.reduce((sum, item) => sum + (Number(item?.returnQty) || 0), 0)}</td>
-                <td class="total-cell">${fmt(safeReturnedItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.returnQty) || 0)), 0))}</td>
-                <td class="number-cell">${safeReturnedItems.reduce((sum, item) => sum + ((item?.weight || 0) * (Number(item?.returnQty) || 0)), 0).toFixed(2)} кг</td>
+                <td class="number-cell">${safeReturnedItems.reduce((sum, item) => sum + (Number(item?.returnedQty || item?.qty) || 0), 0)}</td>
+                <td class="total-cell">${fmt(safeReturnedItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.returnedQty || item?.qty) || 0)), 0))}</td>
+                <td class="number-cell">${safeReturnedItems.reduce((sum, item) => sum + ((item?.weight || 0) * (Number(item?.returnedQty || item?.qty) || 0)), 0).toFixed(2)} кг</td>
                 <td></td>
               </tr>
               <tr class="summary-row">
@@ -135,7 +135,7 @@ export async function openReturnReceipt({
                 <td colspan="8" style="position: relative; border-top: 2px solid #000;">
                   <div style="display: flex; justify-content: space-between; width: 100%;">
                     <span>АВАНС: ${safeAdvancePayment > 0 ? fmt(safeAdvancePayment) : '000 000'}</span>
-                    <span>ЖАМИ (соатгача): ${fmt(safeReturnedItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.returnQty) || 0) * billingMultiplier), 0))} (${returnTime})</span>
+                    <span>ЖАМИ (соатгача): ${fmt(safeReturnedItems.reduce((sum, item) => sum + ((Number(item?.pricePerDay) || 0) * (Number(item?.returnedQty || item?.qty) || 0) * billingMultiplier), 0))} (${returnTime})</span>
                   </div>
                 </td>
               </tr>
@@ -155,7 +155,7 @@ export async function openReturnReceipt({
                 <th>Сони</th>
                 <th>Суммаси</th>
                 <th>Оғирлиги</th>
-                <th>Берилган сана</th>
+                <th>Сана вақт</th>
               </tr>
             </thead>
             <tbody>
@@ -168,7 +168,7 @@ export async function openReturnReceipt({
                   <td class="number-cell">${Number(item?.qty) || 0}</td>
                   <td class="price-cell">${fmt((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0))}</td>
                   <td class="number-cell">${(item?.weight || 0) * (Number(item?.qty) || 0)} кг</td>
-                  <td>${rentalDate}</td>
+                  <td>${rentalDate} ${rentalTime}</td>
                 </tr>
               `).join('')}
               <tr class="summary-row">

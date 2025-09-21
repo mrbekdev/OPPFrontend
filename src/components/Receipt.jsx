@@ -69,7 +69,7 @@ export async function openPrintReceipt({ settings, customer, items, fromDate, to
         <title>Чек - ${safeOrderId}</title>
         <meta charset="UTF-8" />
         <style>
-          body { font-family: Arial, sans-serif; font-size: 16px; background: #fff; color: #000; margin: 0; padding: 10px; font-weight: bold; }
+          body { font-family: Arial, sans-serif; font-size: 16px; background: #fff; color: #000; margin: 0; padding: 20px; font-weight: bold; }
           .header { text-align: center; font-size: 18px; font-weight: bold; }
           table { width: 100%; border-collapse: collapse; margin: 0; }
           th, td { border: 1px solid #000;  font-size: 12px; text-align: left; vertical-align: top; font-weight: bold; }
@@ -96,8 +96,7 @@ export async function openPrintReceipt({ settings, customer, items, fromDate, to
               <th>Сони</th>
               <th>Суммаси</th>
               <th>Оғирлиги</th>
-              <th>Берилган сана</th>
-              <th>Берилган вақт</th>
+              <th>Сана вақт</th>
             </tr>
           </thead>
           <tbody>
@@ -110,8 +109,7 @@ export async function openPrintReceipt({ settings, customer, items, fromDate, to
                 <td class="number-cell">${Number(item?.qty) || 0}</td>
                 <td class="price-cell">${fmt((Number(item?.pricePerDay) || 0) * (Number(item?.qty) || 0))}</td>
                 <td class="number-cell">${(item?.weight || 0) * (Number(item?.qty) || 0)} кг</td>
-                <td>${formatDate(safeStartDateTime || fromDate)}</td>
-                <td>${getStartTime()}</td>
+                <td>${formatDate(safeStartDateTime || fromDate)} ${getStartTime()}</td>
               </tr>
             `).join('')}
             ${safeAdvancePayment > 0 ? `

@@ -22,6 +22,7 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
   const [startDateTime, setStartDateTime] = useState(getCurrentLocalDateTime());
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showQuantityModal, setShowQuantityModal] = useState(false);
+  const [modalWasClosed, setModalWasClosed] = useState(false); // Модал ёпилганини кузатиш учун
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [quantityInput, setQuantityInput] = useState('');
   const quantityInputRef = useRef(null);
@@ -77,6 +78,14 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
     if (savedCart) {
       setCart(JSON.parse(savedCart));
     }
+    
+    // Мижоз маълумотларини localStorage дан олиш
+    const savedCustomer = localStorage.getItem('customerData');
+    if (savedCustomer) {
+      const customerData = JSON.parse(savedCustomer);
+      setCustomer(customerData.customer || { firstName: '', lastName: '', phone: '' });
+      setAdvancePayment(customerData.advancePayment || '');
+    }
   }, []);
 
   // Сават ўзгарганда localStorage га сақлаш
@@ -87,6 +96,28 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
       localStorage.removeItem('cart');
     }
   }, [cart]);
+
+  // Компонент unmount бўлганда ёки бошqa саҳифага ўтганда модални ёпиш
+  // Мижоз маълумотларини localStorage га сақлаш
+  useEffect(() => {
+    return () => {
+      // Cleanup function - компонент unmount бўлганда ишлайди
+      // Агар мижоз маълумотлари тўлдирилган бўлса, localStorage га сақлаш
+      if (customer.firstName || customer.lastName || customer.phone || advancePayment) {
+        const customerData = {
+          customer: customer,
+          advancePayment: advancePayment
+        };
+        localStorage.setItem('customerData', JSON.stringify(customerData));
+      }
+      
+      setShowCustomerModal(false);
+      setShowQuantityModal(false);
+      setModalWasClosed(true); // Саҳифа алмашганда модал ёпилганини белгилаш
+    };
+  }, []); // Removed dependencies to prevent running on every keystroke
+
+  // Модал ёпилган бўлса, қайта очмаслик учун - REMOVED: This was causing modal to close unexpectedly
 
   const fetchProducts = async () => {
     try {
@@ -181,6 +212,10 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
     return cart.reduce((total, item) => total + (item.price * item.qty), 0);
   };
 
+  const calculateTotalWeight = () => {
+    return cart.reduce((total, item) => total + ((item.weight || 0) * item.qty), 0);
+  };
+
   const formatPrice = (price) => {
     return new Intl.NumberFormat('uz-UZ').format(price) + " сўм";
   };
@@ -189,6 +224,7 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
   const handleCheckout = () => {
     if (cart.length === 0) return;
     setShowCustomerModal(true);
+    setModalWasClosed(false); // Модал очилганда флагни ресет қилиш
   };
 
   const processOrder = async () => {
@@ -261,13 +297,13 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
             name: item.name,
             size: item.size,
           })),
-          fromDate: startDateTime,
+          fromDate: null, // Not used anymore
           toDate: null,
           subtotal: data.order.subtotal,
           tax: data.order.tax,
           total: data.order.total,
           advancePayment: Number(advancePayment.replace(/\s/g, '')) || 0,
-          paidAt: startDateTime,
+          createdAt: startDateTime, // Use createdAt for start time
           returnedAt: null,
           status: 'PENDING',
         };
@@ -292,6 +328,10 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
         setCustomer({ firstName: '', lastName: '', phone: '' });
         setAdvancePayment('');
         setShowCustomerModal(false);
+        setModalWasClosed(true); // Муваффақиятли юборилганда модал ёпилганини белгилаш
+        
+        // localStorage дан мижоз маълумотларини тозалаш
+        localStorage.removeItem('customerData');
         
         // Update products inventory after rental
         const updatedItems = items.map(item => {
@@ -437,6 +477,10 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
                         {formatPrice(calculateTotal())}
                       </span>
                     </div>
+                    <div className="flex justify-between text-sm text-gray-600 mt-1">
+                      <span>Жами оғирлик:</span>
+                      <span>{calculateTotalWeight().toFixed(2)} кг</span>
+                    </div>
                     <div className="text-sm text-gray-600 mt-1">
                       Хақиқий вақт қайтарилганда ҳисобланади
                     </div>
@@ -467,13 +511,13 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
                 
                 {/* Search */}
                 <div className="relative">
-                  <Search className="absolute left-3 top-3 text-gray-400" size={20} />
+                  <Search className="absolute left-3 top-3 text-gray-400 " size={20} />
                   <input
                     type="text"
                     placeholder="Маҳсулот номи ёки ўлчами бўйича қидиринг..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 rounded-lg text-gray-800 text-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    className="w-full pl-10 pr-4 py-3 rounded-lg text-gray-800 text-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
                   />
                 </div>
               </div>
@@ -500,6 +544,9 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
                         <div className="text-2xl text-black font-bold mb-2">
                           {product.size}
                         </div>
+                        <div className="text-sm text-gray-600 mb-2">
+                          {product.weight || 0} кг
+                        </div>
                         <div className={`
                           text-sm font-medium px-2 py-1 rounded-full
                           ${product.count > 0 
@@ -523,8 +570,24 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
 
       {/* Customer Modal */}
       {showCustomerModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={() => {
+            // Мижоз маълумотларини localStorage га сақлаш
+            const customerData = {
+              customer: customer,
+              advancePayment: advancePayment
+            };
+            localStorage.setItem('customerData', JSON.stringify(customerData));
+            
+            setShowCustomerModal(false);
+            setModalWasClosed(true);
+          }}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-xl">
               <h3 className="text-2xl font-bold flex items-center">
                 <User className="mr-3" size={28} />
@@ -594,7 +657,17 @@ const ModernRentalPOS = ({ items, setItems, customers, setCustomers, rentals, se
             
             <div className="p-6 bg-gray-50 rounded-b-xl flex space-x-3">
               <button
-                onClick={() => setShowCustomerModal(false)}
+                onClick={() => {
+                  // Мижоз маълумотларини localStorage га сақлаш
+                  const customerData = {
+                    customer: customer,
+                    advancePayment: advancePayment
+                  };
+                  localStorage.setItem('customerData', JSON.stringify(customerData));
+                  
+                  setShowCustomerModal(false);
+                  setModalWasClosed(true); // Бекор қилинганда модал ёпилганини белгилаш
+                }}
                 className="flex-1 px-4 py-3 bg-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-400 transition-colors"
               >
                 Бекор қилиш

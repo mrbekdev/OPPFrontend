@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { fmt } from "../utils/helpers";
+import { fmt, toUzbekistanTime } from "../utils/helpers";
 import { openPrintReceipt } from "./Receipt";
 
 export default function ReportsPanel({ rentals, items, customers, setRentals }) {
@@ -18,7 +18,6 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
     refreshOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
 
   const yearOptions = useMemo(() => {
     const ys = new Set(
@@ -40,40 +39,59 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
     return arr.length ? arr : Array.from({ length: 12 }, (_, i) => i + 1);
   }, [safeRentals, year]);
 
-  const normalizedRentals = safeRentals.map((r) => ({
-    id: r.id,
-    date: r.paidAt ? r.paidAt.slice(0, 10) : "",
-    paidAt: r.paidAt || "",
-    fromDate: r.fromDate || r.paidAt || "",
-    returnedAt: r.returnedAt || null,
-    year: r.paidAt ? new Date(r.paidAt).getFullYear() : null,
-    month: r.paidAt ? new Date(r.paidAt).getMonth() + 1 : null,
-    days: r.days || 1,
-    returned: !!r.returnedAt,
-    customerId: r.customerId,
-    status: r.status,
-    items: (r.items || []).map((item) => {
-      const product = safeItems.find((i) => i.id === item.itemId);
-      const productName = item.name || item.productName || product?.name || item?.product?.name || "Unknown";
-      const productSize = item.size || item.productSize || product?.size || item?.product?.size || "N/A";
-      const pricePerDay = item.pricePerDay || product?.price || item?.product?.price || 0;
-      const qty = item.qty || 0;
-      const activeQty = item.activeQty || qty;
-      const returnedQty = item.returnedQty || item.returned || 0;
-      return {
-        orderItemId: item.orderItemId,
-        productId: item.itemId,
-        productName,
-        productSize,
-        qty,
-        activeQty,
-        returnedQty,
-        pricePerDay,
-        isFullyReturned: returnedQty === qty,
-        isPartiallyReturned: returnedQty > 0 && returnedQty < qty,
-      };
-    }),
-  }));
+  // Calculate billing multiplier for each rental
+  const calcBillingMultiplier = (createdAt, returnedAt) => {
+    if (!createdAt) return 1;
+    const startDate = toUzbekistanTime(createdAt);
+    const endDate = returnedAt ? toUzbekistanTime(returnedAt) : toUzbekistanTime(new Date());
+    const totalHours = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60));
+    
+    // 1-24 hours = 1 day, after 24 hours = hourly calculation
+    return totalHours <= 24 ? 1 : 1 + ((totalHours - 24) / 24);
+  };
+
+  const normalizedRentals = safeRentals.map((r) => {
+    // Use stored billing multiplier if available, otherwise calculate
+    const billingMultiplier = r.billingMultiplier || calcBillingMultiplier(r.createdAt || r.paidAt, r.returnedAt);
+    
+    return {
+      id: r.id,
+      date: r.createdAt ? r.createdAt.slice(0, 10) : (r.paidAt ? r.paidAt.slice(0, 10) : ""),
+      paidAt: r.paidAt || "",
+      createdAt: r.createdAt || r.paidAt || "",
+      fromDate: r.fromDate || r.createdAt || r.paidAt || "",
+      returnedAt: r.returnedAt || null,
+      year: r.createdAt ? new Date(r.createdAt).getFullYear() : (r.paidAt ? new Date(r.paidAt).getFullYear() : null),
+      month: r.createdAt ? new Date(r.createdAt).getMonth() + 1 : (r.paidAt ? new Date(r.paidAt).getMonth() + 1 : null),
+      billingMultiplier: billingMultiplier,
+      rentalDays: r.rentalDays || Math.floor(billingMultiplier),
+      rentalHours: r.rentalHours || Math.round((billingMultiplier % 1) * 24),
+      returned: !!r.returnedAt,
+      customerId: r.customerId,
+      status: r.status,
+      items: (r.items || []).map((item) => {
+        const product = safeItems.find((i) => i.id === item.itemId);
+        const productName = item.name || item.productName || product?.name || item?.product?.name || "Unknown";
+        const productSize = item.size || item.productSize || product?.size || item?.product?.size || "N/A";
+        const pricePerDay = item.pricePerDay || product?.price || item?.product?.price || 0;
+        const qty = item.qty || 0;
+        const activeQty = item.activeQty || (qty - (item.returned || 0));
+        const returnedQty = item.returnedQty || item.returned || 0;
+        return {
+          orderItemId: item.orderItemId,
+          productId: item.itemId,
+          productName,
+          productSize,
+          qty,
+          activeQty,
+          returnedQty,
+          pricePerDay,
+          isFullyReturned: returnedQty === qty,
+          isPartiallyReturned: returnedQty > 0 && returnedQty < qty,
+        };
+      }),
+    };
+  });
 
   const filteredRentals = normalizedRentals
     .filter((r) => (year ? r.year === Number(year) : true))
@@ -81,7 +99,7 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
 
   const totals = filteredRentals.reduce(
     (a, r) => {
-      const rentalTotal = r.items.reduce((s, it) => s + it.pricePerDay * it.activeQty * r.days, 0);
+      const rentalTotal = r.items.reduce((s, it) => s + it.pricePerDay * it.qty * r.billingMultiplier, 0);
       a.subtotal += rentalTotal;
       return a;
     },
@@ -91,7 +109,7 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
   const groupedByDay = useMemo(() => {
     const map = new Map();
     filteredRentals.forEach((r) => {
-      const revenue = r.items.reduce((s, it) => s + it.pricePerDay * it.activeQty * r.days, 0);
+      const revenue = r.items.reduce((s, it) => s + it.pricePerDay * it.qty * r.billingMultiplier, 0);
       map.set(r.date, (map.get(r.date) || 0) + revenue);
     });
     return Array.from(map.entries())
@@ -116,7 +134,7 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
         existing.totalQty += item.qty;
         existing.totalReturnedQty += item.returnedQty;
         existing.totalActiveQty += item.activeQty;
-        existing.totalAmount += item.pricePerDay * item.activeQty * r.days;
+        existing.totalAmount += item.pricePerDay * item.qty * r.billingMultiplier;
         summaryMap.set(key, existing);
       });
     });
@@ -144,13 +162,13 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
     ].join(delimiter);
     const body = filteredRentals
       .flatMap((r) => {
-        const rentalTotal = r.items.reduce((s, it) => s + it.pricePerDay * it.activeQty * r.days, 0);
+        const rentalTotal = r.items.reduce((s, it) => s + it.pricePerDay * it.qty * r.billingMultiplier, 0);
         return r.items.map((item) =>
           [
             r.id,
             `"${r.date}"`,
             `"${nameById(r.customerId)}"`,
-            r.days,
+            r.billingMultiplier.toFixed(2),
             rentalTotal.toFixed(2),
             `"${getOrderStatusText(r.status || 'PENDING')}"`,
             `"${item.productName}"`,
@@ -159,7 +177,7 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
             item.returnedQty,
             item.activeQty,
             item.pricePerDay.toFixed(2),
-            (item.pricePerDay * item.activeQty * r.days).toFixed(2),
+            (item.pricePerDay * item.qty * r.billingMultiplier).toFixed(2),
           ].join(delimiter)
         );
       })
@@ -219,36 +237,33 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
       const res = await fetch("http://localhost:3000/orders", { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
-        const calcDays = (from, to) => {
-          const d1 = new Date(from);
-          const d2 = new Date(to);
-          const ms = Math.max(0, d2 - d1);
-          return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
-        };
         const mapped = (data.orders || []).map((o) => ({
           id: o.id,
           customerId: o.clientId,
           items: (o.items || []).map((i) => ({
             itemId: i.productId,
             qty: i.quantity, // Жами сон
-            activeQty: i.activeQuantity || (i.quantity - i.returned), // Фаол сон
+            activeQty: i.quantity - i.returned, // Фаол сон
             returnedQty: i.returned, // Қайтарилган сон
             pricePerDay: i.product.price,
             orderItemId: i.id,
             returned: i.returned,
             name: i.product.name,
             size: i.product.size,
-            isFullyReturned: i.isFullyReturned || (i.returned === i.quantity),
-            isPartiallyReturned: i.isPartiallyReturned || (i.returned > 0 && i.returned < i.quantity),
+            isFullyReturned: i.returned === i.quantity,
+            isPartiallyReturned: i.returned > 0 && i.returned < i.quantity,
           })),
-          fromDate: o.fromDate?.split("T")[0],
-          toDate: o.toDate?.split("T")[0],
-          days: calcDays(o.fromDate, o.toDate),
+          createdAt: o.createdAt,
+          fromDate: o.fromDate,
+          toDate: o.toDate,
+          billingMultiplier: o.billingMultiplier || 1,
+          rentalDays: o.rentalDays || 0,
+          rentalHours: o.rentalHours || 0,
           subtotal: o.subtotal,
           tax: o.tax,
           total: o.total,
           paidAt: o.createdAt,
-          returnedAt: o.status !== "PENDING" ? o.updatedAt : null,
+          returnedAt: o.returnedAt,
           status: o.status,
         }));
         setRentals(mapped);
@@ -558,8 +573,8 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
                     <td className="text-2xl">{r.id}</td>
                     <td className="text-2xl">{r.date}</td>
                     <td className="text-2xl">{nameById(r.customerId)}</td>
-                    <td className="text-2xl">{r.days}</td>
-                    <td className="text-2xl">{fmt(r.items.reduce((s, it) => s + it.pricePerDay * it.activeQty * r.days, 0))}</td>
+                    <td className="text-2xl">{r.billingMultiplier.toFixed(1)} кун</td>
+                    <td className="text-2xl">{fmt(r.items.reduce((s, it) => s + it.pricePerDay * it.qty * r.billingMultiplier, 0))}</td>
                     <td>
                       <span style={{ 
                         color: getOrderStatusColor(r.status || 'PENDING'),
@@ -608,7 +623,7 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
                 <div><b>Олинган сана:</b> {orderDetail.fromDate ? new Date(orderDetail.fromDate).toLocaleString('uz-UZ') : new Date(orderDetail.date).toLocaleString('uz-UZ')}</div>
                 <div><b>Қайтарилган сана:</b> {orderDetail.returnedAt ? new Date(orderDetail.returnedAt).toLocaleString('uz-UZ') : '-'}</div>
                 <div><b>Мижоз:</b> {nameById(orderDetail.customerId)}</div>
-                <div><b>Кун:</b> {orderDetail.days}</div>
+                <div><b>Ижара муддати:</b> {orderDetail.billingMultiplier.toFixed(1)} кун</div>
                 <div><b>Ҳолат:</b> 
                   <span style={{ 
                     color: getOrderStatusColor(orderDetail.status || 'PENDING'),
@@ -664,7 +679,7 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
                           {it.returnedQty} дона
                         </td>
                         <td>{fmt(it.pricePerDay)}</td>
-                        <td>{fmt(it.pricePerDay * it.activeQty * orderDetail.days)}</td>
+                        <td>{fmt(it.pricePerDay * it.qty * orderDetail.billingMultiplier)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -677,7 +692,7 @@ export default function ReportsPanel({ rentals, items, customers, setRentals }) 
                   Қайтарилган маҳсулотлар: {orderDetail.items.filter(it => it.returnedQty > 0).length}
                 </div>
                 <div className="total">
-                  Умумий: {fmt(orderDetail.items.reduce((s, it) => s + it.pricePerDay * it.activeQty * orderDetail.days, 0))}
+                  Умумий: {fmt(orderDetail.items.reduce((s, it) => s + it.pricePerDay * it.qty * orderDetail.billingMultiplier, 0))}
                 </div>
               </div>
             </div>

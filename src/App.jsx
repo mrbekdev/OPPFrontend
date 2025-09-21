@@ -3,6 +3,7 @@ import Header from "./components/Header.jsx";
 import Login from "./components/Login.jsx";
 import RentPanel from "./components/RentPanel.jsx";
 import ReturnPanel from "./components/ReturnPanel.jsx";
+import ReturnsPanel from "./components/ReturnsPanel.jsx";
 import InventoryPanel from "./components/InventoryPanel.jsx";
 import CustomersPanel from "./components/CustomersPanel.jsx";
 import ReportsPanel from "./components/ReportsPanel.jsx";
@@ -140,6 +141,12 @@ export default function App() {
             setItems={setItems}
             rentals={rentals}
             setRentals={setRentals}
+            customers={customers}
+            settings={settings}
+          />
+        )}
+        {tab === "returns" && (
+          <ReturnsPanel
             customers={customers}
             settings={settings}
           />

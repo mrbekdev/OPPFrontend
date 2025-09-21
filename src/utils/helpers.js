@@ -34,7 +34,12 @@ export const toUzbekistanTime = (date) => {
 
 export const formatUzbekistanDate = (date) => {
   const inputDate = new Date(date);
-  return inputDate.toLocaleDateString('uz-UZ', {timeZone: 'Asia/Tashkent'});
+  return inputDate.toLocaleDateString('en-GB', {
+    timeZone: 'Asia/Tashkent',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).replace(/\//g, '.');
 };
 
 export const formatUzbekistanTime = (date) => {
